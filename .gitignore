@@ -1,0 +1,31 @@
+# arduino-cli 建置產物（約 19MB，會自動重建）
+firmware/*/build/
+
+# 編譯站執行期暫存（用完即刪）
+station/tmp/
+
+# WASM 建置產物（由 preview/build_wasm.ps1 產生）
+preview/web/
+
+# 雜項
+*.bak
+*.log
+.DS_Store
+Thumbs.db
+
+# Art-Net 橋執行記錄
+bridge/bridge.log
+bridge/bridge.err
+
+
+# 範例驗收產生的畫面拼圖（每次跑測試都會重畫）
+examples/preview.png
+
+# 學員用「＋ 新增範例」存的範例：每台電腦自己的，不進版控（git pull 才不會衝突）
+examples/*/我的範例/
+
+# 編譯站產生的縮圖快取（學員範例用）
+station/cache/
+
+# 學員電腦的工具鏈（install.ps1／install.sh 從隨身碟裝的）
+tools/

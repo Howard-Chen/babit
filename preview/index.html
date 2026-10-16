@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>BatoPixel 預覽</title>
+<style>
+  body { margin:0; min-height:100vh; display:flex; flex-direction:column;
+         align-items:center; justify-content:center; gap:16px;
+         background:#0d0f12; color:#9aa3ad; font-family:system-ui,sans-serif; }
+  canvas { background:#14171c; border-radius:16px; }
+  h1 { font-size:15px; font-weight:500; color:#c8d0d9; margin:0; }
+  .hud { font-size:13px; letter-spacing:.05em; }
+</style>
+</head>
+<body>
+<h1>BatoPixel 預覽（S1）</h1>
+<canvas id="m" width="480" height="480"></canvas>
+<div class="hud" id="hud">載入中…</div>
+<script src="web/batopixel.js" onerror="document.getElementById(String.fromCharCode(104,117,100)).innerHTML='尚未建置：請先執行 preview/build_wasm.ps1'"></script>
+<script>
+(async () => {
+  if (typeof createBatoPixel !== 'function') {
+    document.getElementById('hud').innerHTML =
+      '尚未建置。在 preview/ 執行：powershell -ExecutionPolicy Bypass -File build_wasm.ps1<br>（日常使用請改用編譯站 station/run_station.ps1）';
+    return;
+  }
+  const mod = await createBatoPixel();
+  const ptr = mod._bp_framebuffer();
+  const ctx = document.getElementById("m").getContext("2d");
+  const hud = document.getElementById("hud");
+  const N = 8, cell = 52, gap = 8, pad = (480 - N * cell - (N - 1) * gap) / 2;
+  const target = mod._bp_fps ? mod._bp_fps() : 60;
+  const interval = 1000 / target;
+  const t0 = performance.now();
+  let frames = 0, fpsT = t0, fps = 0, last = -Infinity;
+  function frame(now) {
+    if (now - last < interval - 1) { requestAnimationFrame(frame); return; }
+    last = now;
+    const t = (now - t0) / 1000;
+    mod._bp_tick(t);
+    const fb = mod.HEAPU8.subarray(ptr, ptr + N * N * 3);
+    ctx.clearRect(0, 0, 480, 480);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const i = (y * N + x) * 3;
+      ctx.fillStyle = `rgb(${fb[i]},${fb[i+1]},${fb[i+2]})`;
+      ctx.beginPath();
+      ctx.roundRect(pad + x * (cell + gap), pad + y * (cell + gap), cell, cell, 10);
+      ctx.fill();
+    }
+    frames++;
+    if (now - fpsT > 500) { fps = Math.round(frames * 1000 / (now - fpsT)); frames = 0; fpsT = now; }
+    hud.textContent = `t = ${t.toFixed(1)}s ・ ${fps} fps（目標 ${target}，與板子同參數）・ 與板子共用同一份 BatoPixel.h`;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "target": "192.168.0.255",
+  "port": 6454,
+  "wsPort": 8940,
+  "net": 0,
+  "startUniverse": 1,
+  "pixels": 256,
+  "pixelsPerUniverse": 170,
+  "pixelOffset": 0,
+  "padTo512": true,
+  "fps": 40,
+  "brightness": 0.25,
+  "maxCurrentMa": 2000,
+  "maPerLed": 60,
+  "idleMaPerLed": 1,
+  "colorOrder": "GRB",
+  "layout": {
+    "width": 16,
+    "height": 16,
+    "origin": "top-right",
+    "axis": "row",
+    "serpentine": true
+  },
+  "map": null,
+  "scale": 2
+}

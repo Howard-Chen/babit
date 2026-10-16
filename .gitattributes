@@ -1,0 +1,9 @@
+# .bat 一定要 CRLF：LF-only 的批次檔在 cmd 裡 goto／label 會有詭異行為
+*.bat text eol=crlf
+# PowerShell 腳本也用 CRLF（含中文的另外存成 UTF-8 with BOM）
+*.ps1 text eol=crlf
+# 學員的 Mac 直接執行這些腳本（install.sh 還會經 curl 原樣送進 bash）：一律 LF
+*.sh text eol=lf
+*.command text eol=lf
+# 圖示是二進位，別做行尾轉換
+*.ico binary

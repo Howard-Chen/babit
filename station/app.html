@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Babit 工具</title>
+<style>
+  * { box-sizing: border-box; }
+  /* 復古儀器風：淺灰機身面板、象牙白方形鍵帽、琥珀／橘色指示鍵、黑色凹陷顯示窗；右側預覽區是深一階的淺灰面板。
+     框線加粗與立體感一律用 box-shadow 畫，不改任何元素的大小與位置。 */
+  :root {
+    --panel:#d6d5cf;      /* 機身灰 */
+    --panel2:#cac9c2;     /* 右側預覽區：比左邊深一階 */
+    --line:#2c2c2a;       /* 面板框線 */
+    --ink:#1d1d1b;        /* 主要文字 */
+    --ink2:#5d5c55;       /* 次要文字 */
+    --key:#f1efe7;        /* 象牙白鍵帽 */
+    --key-line:#8f8b7e;   /* 鍵帽外框 */
+    --key-edge:#a9a597;   /* 鍵帽底邊（立體感） */
+    --amber:#f2b11e;      /* 執行：黃琥珀鍵（參考圖 BAT） */
+    --orange:#f5902a;     /* 燒錄：亮橘鍵（參考圖 ALERT） */
+    --orange-line:#a55a10;
+    --orange-edge:#b36414;
+    --lit:#c2bfb3;        /* 開啟中：卡住的灰鍵（不用顏色，壓下去變深） */
+    --lit-line:#7c796e;
+    --lit-edge:#8f8c81;
+    --lit-ink:var(--ink);
+    --lit-tint:#c9c6ba;   /* 選中的範例卡片底色 */
+    --window:#121311;     /* 黑色顯示窗 */
+    --window-ink:#efece2; /* 顯示窗裡的字 */
+    --red:#ff5b4f;        /* 顯示窗裡的錯誤字、拍點紅燈 */
+  }
+  body { margin:0; height:100vh; display:grid; grid-template-columns:1fr 540px;
+         background:var(--panel); color:var(--ink); font-family:system-ui,sans-serif; }
+  .left { display:flex; flex-direction:column; padding:20px; gap:12px; min-width:0; }
+  h1 { font-size:15px; font-weight:500; margin:0; }
+  textarea { flex:1; background:var(--window); color:var(--window-ink); border:1px solid #000;
+             border-radius:4px; padding:14px; font-family:Consolas,monospace;
+             font-size:14px; line-height:1.5; resize:none; outline:none;
+             white-space:pre; tab-size:2; caret-color:var(--amber);
+             box-shadow:0 0 0 1px var(--line), inset 0 2px 8px rgba(0,0,0,.7); }
+  .bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  /* 鍵帽：外框、頂部亮邊、底部厚邊都是 box-shadow，按下時往下沉 2px */
+  button { --face:var(--key); --kl:var(--key-line); --ke:var(--key-edge);
+           color:var(--ink); background:var(--face); border:0; border-radius:4px; padding:10px 24px;
+           font-size:15px; font-weight:700; cursor:pointer;
+           box-shadow:inset 0 0 0 1px var(--kl), inset 0 2px 0 rgba(255,255,255,.55),
+                      0 3px 0 var(--ke), 0 5px 6px rgba(0,0,0,.28); }
+  button:active:not(:disabled) { transform:translateY(2px);
+           box-shadow:inset 0 0 0 1px var(--kl), 0 1px 0 var(--ke), 0 2px 3px rgba(0,0,0,.28); }
+  button:focus-visible { outline:2px solid var(--amber); outline-offset:3px; }
+  #run { --face:var(--amber); --kl:#a8780c; --ke:#b5850f; }
+  /* 字加一圈深色細邊：黃色的 ⚡ 在橘色鍵上才看得清楚 */
+  #flash { --face:var(--orange); --kl:var(--orange-line); --ke:var(--orange-edge);
+           text-shadow:0 0 1px rgba(70,30,0,.9), 0 0 1px rgba(70,30,0,.9); }
+  .mini { padding:7px 14px; font-size:13px; }
+  /* 開啟中（麥克風、測試音、選中的燈板尺寸）：鍵帽壓下、亮燈 */
+  .mini.on { --face:var(--lit); --kl:var(--lit-line); --ke:var(--lit-edge); color:var(--lit-ink);
+             transform:translateY(2px);
+             box-shadow:inset 0 0 0 1px var(--kl), inset 0 2px 4px rgba(0,0,0,.18), 0 1px 0 var(--ke); }
+  button:disabled { opacity:.5; cursor:default; }
+  #status, #fwstat { font-size:13px; color:var(--ink2); }
+  .pill { font-size:12px; color:#8a4b00; }
+  #log { max-height:180px; overflow:auto; background:var(--window); border:1px solid #000;
+         color:var(--red); border-radius:4px; padding:12px; margin:0; width:100%;
+         font-family:Consolas,monospace; font-size:12px; white-space:pre-wrap;
+         box-shadow:0 0 0 1px var(--line), inset 0 2px 8px rgba(0,0,0,.7); }
+  .right { display:flex; flex-direction:column; align-items:center;
+           justify-content:center; gap:14px; background:var(--panel2); padding:16px;
+           box-shadow:inset 2px 0 0 #b1afa6; }
+  canvas#m { background:var(--window); border-radius:6px;
+             box-shadow:0 0 0 2px #1b1c1b, 0 0 0 5px #b8b5ab, 0 0 0 6px #87847a; }
+  .hud { font-size:12px; color:var(--ink2); }
+  /* 板子上的旋鈕與兩顆按鈕（預覽沒有硬體，在這裡操作）：滑桿＝knob.value()，按住＝pressed()，按一下＝clicked() */
+  .inputs { display:flex; align-items:center; gap:12px; font-size:12px; color:var(--ink2); }
+  .inputs label { display:flex; align-items:center; gap:6px; }
+  .inputs input[type=range] { width:150px; accent-color:var(--amber); }
+  .inputs #knobv { min-width:3.2em; }
+  .inputs .mini { touch-action:none; user-select:none; }
+  /* 除錯模式：右邊的燈板預覽換成序列埠的文字視窗（板子或預覽程式用 Serial 印出來的東西） */
+  .serial { width:480px; display:flex; flex-direction:column; gap:8px; }
+  .serial[hidden] { display:none; }
+  .srow { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink2); }
+  .srow #serialstat { flex:1; line-height:1.4; }
+  #serialout { height:440px; margin:0; overflow:auto; background:var(--window); color:#d8d3c2; border-radius:6px;
+               padding:10px 12px; font:12px/1.55 Consolas,"Microsoft JhengHei",monospace; white-space:pre-wrap;
+               box-shadow:0 0 0 2px #1b1c1b, 0 0 0 5px #b8b5ab, 0 0 0 6px #87847a, inset 0 2px 8px rgba(0,0,0,.7); }
+  .meter { width:480px; background:var(--window); border-radius:4px; padding:12px; display:none;
+           box-shadow:0 0 0 2px #1b1c1b, 0 0 0 5px #b8b5ab, 0 0 0 6px #87847a, inset 0 2px 8px rgba(0,0,0,.7); }
+  .meter.on { display:block; }
+  .mrow { display:flex; align-items:center; gap:10px; font-size:11px; color:#c9c4b4;
+          margin-bottom:8px; }
+  .lvl { flex:1; height:6px; background:#2a2b28; border-radius:1px; overflow:hidden; }
+  .lvl i { display:block; height:100%; width:0; background:var(--amber); }
+  .bands { display:flex; gap:5px; height:56px; align-items:flex-end; }
+  .bands div { flex:1; background:var(--amber); border-radius:1px; height:2px; }
+  #beat { width:9px; height:9px; border-radius:50%; background:#3b2b29; }
+  #beat.hit { background:var(--red); box-shadow:0 0 6px var(--red); }
+  /* 範例卡片：縮圖是編譯站跑出來的 sprite（28 格），用 CSS steps() 播放 */
+  .gallery { border-top:1px solid var(--line); padding-top:10px; }
+  .gtitle { font-size:12px; color:var(--ink2); margin-bottom:8px; }
+  .cards { display:flex; gap:10px; overflow-x:auto; padding-bottom:4px; }
+  /* 卡片是 <button>：瀏覽器預設把按鈕內容垂直置中，卡片被撐成等高時，說明較短的卡
+     內容會整個往下移，縮圖就對不齊。改成直向 flex，內容一律從頂端排。
+     寬 134＝邊框 2＋內距 20＋縮圖 112，縮圖左右留白才對稱（112÷8＝14，LED 放大才是整數倍）。 */
+  .card { flex:0 0 auto; width:134px; background:var(--key); border:1px solid var(--key-line);
+          border-radius:6px; padding:10px; cursor:pointer; text-align:left;
+          color:inherit; font:inherit;
+          display:flex; flex-direction:column; justify-content:flex-start;
+          box-shadow:inset 0 2px 0 rgba(255,255,255,.55), 0 3px 0 var(--key-edge), 0 5px 6px rgba(0,0,0,.22); }
+  .card:hover { border-color:var(--ink2); background:#f8f6ef; }
+  .card.on { border-color:var(--lit-line); background:var(--lit-tint); transform:translateY(2px);
+             box-shadow:inset 0 2px 4px rgba(0,0,0,.15), 0 1px 0 var(--lit-edge); }   /* 選取：鍵帽壓下、亮燈 */
+  /* 格數由縮圖推得（寬 ÷ 高，每格是正方形），存在 --frames；每格 0.1 秒 */
+  .card .thumb { --frames:8; width:112px; height:112px; border-radius:3px; background-color:var(--window);
+                 background-repeat:no-repeat; background-size:calc(112px * var(--frames)) 112px;
+                 image-rendering:pixelated; box-shadow:0 0 0 1px #000;
+                 animation:sprite calc(var(--frames) * 0.1s) steps(var(--frames)) infinite; }
+  @keyframes sprite { to { background-position:calc(-112px * var(--frames)) 0; } }
+  .card .cname { font-size:13px; color:var(--ink); margin-top:8px; }
+  .card .cdesc { font-size:11px; color:var(--ink2); line-height:1.35; margin-top:3px; }
+  .gempty { font-size:12px; color:var(--ink2); padding:6px 2px; }
+  #artbri { accent-color:var(--orange); }
+  /* 燈板尺寸：兩顆並排的鍵，選中的那顆壓下（放在原本「⚙ 硬體設定」的位置） */
+  .seg { display:inline-flex; gap:6px; }
+  /* 錯誤訊息＋「複製錯誤訊息」鍵 */
+  #logwrap { display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
+  /* 提醒：預覽看起來正常、燒到板子上會出問題的寫法（琥珀色，跟紅色的錯誤分開） */
+  #warn { background:#efe0b0; border:1px solid #a8780c; color:#4a3300; border-radius:4px;
+          padding:8px 12px; font-size:13px; line-height:1.5; white-space:pre-line; }
+  #logwrap[hidden], #warn[hidden] { display:none; }
+  /* 範例分組：同一列橫向捲動，每組上面一行分類名，組與組之間一條細線 */
+  .group { flex:0 0 auto; display:flex; flex-direction:column; gap:6px; }
+  .group + .group { border-left:1px solid var(--key-line); padding-left:10px; }
+  .glabel { font-size:11px; color:var(--ink2); }
+  .gcards { display:flex; gap:10px; }
+  /* 標題列：右邊放「複製給 AI 的說明」；範例標題列：右邊放「＋ 新增範例」 */
+  .top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .gtitle { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  /* 新增範例：平常收起來，按「＋ 新增範例」才展開（沿用原本硬體設定面板的樣子） */
+  #addex.on { --face:var(--lit); --kl:var(--lit-line); --ke:var(--lit-edge); }
+  #addpanel { border:1px solid var(--line); border-radius:8px; padding:14px 16px;
+              display:grid; gap:10px; font-size:13px; box-shadow:0 0 0 1px var(--line); }
+  #addpanel[hidden] { display:none; }
+  #addpanel .row { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center; }
+  #addpanel .grp { color:var(--ink2); font-size:12px; }
+  #addpanel input { background:var(--window); color:var(--window-ink); border:1px solid #000; border-radius:3px;
+                    padding:6px 8px; font:inherit; width:220px; box-shadow:inset 0 1px 3px rgba(0,0,0,.6); }
+  #addpanel .note { color:var(--ink2); font-size:12px; }
+  #addpanel .err { color:#a3261c; font-size:12px; white-space:pre-line; }
+  #addpanel .err[hidden] { display:none; }
+</style>
+</head>
+<body>
+<div class="left">
+  <div class="top">
+    <h1>Babit 工具（貼上 → 預覽 → 燒錄／燈板）</h1>
+    <button id="aiguide" class="mini" type="button" title="把寫程式的規則與範例複製起來，貼給你的 AI">📋 複製給 AI 的說明</button>
+  </div>
+  <textarea id="code" spellcheck="false"></textarea>
+  <div class="bar">
+    <button id="run">▶ 執行</button>
+    <span class="seg" role="group" aria-label="燈板尺寸">
+      <button id="sz8" class="mini" type="button" title="8×8 燈板的範例">8×8</button>
+      <button id="sz16" class="mini" type="button" title="16×16 燈板的範例">16×16</button>
+    </span>
+    <button id="flash">⚡ 燒錄到板子</button>
+    <button id="mic" class="mini">🎤 開啟麥克風</button>
+    <button id="tone" class="mini">🔊 測試音</button>
+    <button id="debug" class="mini" type="button" title="載入感應器檢查程式，右邊改成顯示板子序列埠印出來的文字">🔧 除錯模式</button>
+  </div>
+  <div id="addpanel" hidden>
+    <div class="row">
+      <span class="grp">名稱</span>
+      <input id="exname" type="text" maxlength="40" placeholder="例如：我的彩虹" autocomplete="off">
+      <button id="exsave" class="mini" type="button">存檔</button>
+      <button id="excancel" class="mini" type="button">取消</button>
+    </div>
+    <div class="err" id="exerr" hidden></div>
+    <div class="note" id="exnote"></div>
+  </div>
+  <div class="bar">
+    <span id="status">Ctrl+Enter 執行</span>
+    <span id="fwstat"></span>
+    <span id="artnet" class="pill" hidden></span>
+    <label id="artbriw" class="pill" hidden>亮度 <input id="artbri" type="range" min="1" max="100" step="1" style="width:90px;vertical-align:middle"> <span id="artbriv"></span></label>
+  </div>
+  <div id="warn" hidden></div>
+  <div id="logwrap" hidden>
+    <pre id="log"></pre>
+    <button id="copylog" class="mini" type="button">📋 複製錯誤訊息（貼給 AI）</button>
+  </div>
+  <div class="gallery" id="gallery" hidden>
+    <div class="gtitle"><span>範例（點一下載入並執行）</span><button id="addex" class="mini" type="button">＋ 新增範例</button></div>
+    <div class="cards" id="cards"></div>
+  </div>
+</div>
+<div class="right">
+  <canvas id="m" width="480" height="480"></canvas>
+  <div class="serial" id="serialwrap" hidden>
+    <div class="srow">
+      <span id="serialstat"></span>
+      <button id="serialconn" class="mini" type="button">連線板子</button>
+      <button id="serialclear" class="mini" type="button">清除</button>
+    </div>
+    <pre id="serialout"></pre>
+  </div>
+  <div class="inputs" id="inputs" title="板子上的旋鈕與兩顆按鈕：程式用 knob.value()、button1／button2 讀">
+    <label>旋鈕 <input type="range" id="knob" min="0" max="100" value="50"><span id="knobv">50%</span></label>
+    <button id="btn1" class="mini" type="button">按鈕 1</button>
+    <button id="btn2" class="mini" type="button">按鈕 2</button>
+  </div>
+  <div class="hud" id="hud">先按「▶ 執行」</div>
+  <div class="meter" id="meter">
+    <div class="mrow">
+      <span id="beat"></span><span>音量</span>
+      <span class="lvl"><i id="lvlbar"></i></span>
+      <span id="ratetxt"></span>
+    </div>
+    <div class="bands" id="bands"></div>
+  </div>
+</div>
+<script type="module">
+import { ESPLoader, Transport } from "/vendor/esptool-bundle.js";
+
+// 範例清單拿不到時的預設程式（彩虹）：格式跟 examples/ 裡的範例一樣
+const defaultCode = (n) => `// 彩虹流動
+// @desc 每一格的色相由位置決定，整面彩虹持續流動
+#define PANEL ${n}              // 燈板：8（8×8）或 16（16×16）
+#include "BatoPixel.h"
+
+void setup() {
+  begin();                   // 啟動燈板、麥克風、傾斜感測、旋鈕
+}
+
+void loop() {                // 每 1/60 秒執行一次，每次畫出「現在這一格」
+  float t = seconds();       // 開機後第幾秒，動畫都用它來算
+  for (int y = 0; y < HEIGHT; y++)
+    for (int x = 0; x < WIDTH; x++)
+      dot(x, y, hsv((x + y) * 20 + t * 100, 255, 255));
+  show();                    // 送出這一格，並自動等到下一格的時間
+}
+`;
+const codeEl = document.getElementById("code");
+const runBtn = document.getElementById("run");
+const flashBtn = document.getElementById("flash");
+const micBtn = document.getElementById("mic");
+const toneBtn = document.getElementById("tone");
+const sz8 = document.getElementById("sz8");
+const sz16 = document.getElementById("sz16");
+const statusEl = document.getElementById("status");
+const fwstatEl = document.getElementById("fwstat");
+const warnEl = document.getElementById("warn");
+const logWrap = document.getElementById("logwrap");
+const logEl = document.getElementById("log");
+const hud = document.getElementById("hud");
+const meter = document.getElementById("meter");
+const lvlbar = document.getElementById("lvlbar");
+const beatDot = document.getElementById("beat");
+const bandsEl = document.getElementById("bands");
+const rateTxt = document.getElementById("ratetxt");
+const ctx = document.getElementById("m").getContext("2d");
+
+const state = { mod:null, ptr:0, n:8, t0:0, target:60, interval:1000/60, last:-Infinity,
+                frames:0, fpsT:0, fps:0, ticks:0, warn:0, panelWarn:"" };
+const fw = { code:null, key:null, pending:null };
+// 聲音：ac 為 AudioContext，src 為目前音源（麥克風或測試音），an 為分析節點
+// 重新取樣到與板子相同的 16kHz：兩端 bin 解析度一致（15.6Hz），數值才真的可比對。
+// 48kHz 下每個 bin 是 46.9Hz，低頻幾乎分不開（100Hz 與 140Hz 會擠在一起）。
+const TARGET_RATE = 16000;
+const au = { ac:null, an:null, src:null, kind:null, buf:null, rs:null, osc:null, sweep:0 };
+window.__bp = state; window.__bpFw = fw; window.__bpAu = au;
+
+// ── 燈板尺寸（8×8／16×16）──────────────────────────────────────────
+// 切換＝換一組範例（examples/8x8 或 examples/16x16），不改編輯區裡程式的寫法；
+// 程式要編成哪一種燈板由程式開頭的 #define PANEL 決定。選擇記在這台電腦的瀏覽器裡。
+const SIZE_KEY = "babit.size";
+let size = 8;
+try { if (localStorage.getItem(SIZE_KEY) === "16") size = 16; } catch (_) { /* 瀏覽器不給存取就用 8×8 */ }
+
+const setFw = (t) => { fwstatEl.textContent = t; };
+
+// ── 錯誤、提醒、複製 ─────────────────────────────────────────────────
+function showLog(t) { logEl.textContent = t; logWrap.hidden = false; }
+function hideLog() { logWrap.hidden = true; }
+// 編譯錯誤：最上面一行說怎麼辦，下面是編譯站整理過的錯誤訊息（學員整段複製貼給 AI）
+function showCompileError(log) {
+  const w = log.match(/不能用 (\w+)\(\)|用了 (\w+)\(\)：動畫不能停下來等/);   // delay()、delayMicroseconds()、vTaskDelay()…
+  const head = w
+    ? `程式用了 ${w[1] || w[2]}()。按下面的「複製錯誤訊息」貼給 AI，請它改成用 seconds() 算畫面。`
+    : "編譯失敗。按下面的「複製錯誤訊息」貼給 AI，請它照訊息修正。";
+  showLog(head + "\n\n" + log);
+}
+// 提醒：預覽看起來正常、燒到板子上會出問題的寫法（wrapper.cpp 的 BP_WARN_*）
+const WARN_TEXT = {
+  1: "setup() 裡要呼叫 begin()：沒有它，板子上的燈板、麥克風、傾斜感測都不會啟動（預覽看不出來）。",
+  2: "loop() 的最後要呼叫 show()：沒有它，板子上的燈不會亮，聲音與傾斜也不會更新（預覽看不出來）。",
+  4: "loop() 裡只能呼叫一次 show()：每次 loop() 畫一格就好，有先後順序的動畫用 seconds() 算現在在哪一段。",
+};
+// 程式的 PANEL 跟目前選的燈板不同：預覽照程式顯示，但燒到選的那片燈板上會不對
+function panelWarnText(p) {
+  return !p || p === size ? "" :
+    `這段程式是 ${p}×${p} 燈板用的（#define PANEL ${p}），現在選的是 ${size}×${size} 燈板。` +
+    `燒到 ${size}×${size} 燈板上畫面會不對：請改用 ${size}×${size} 的程式，或請 AI 把它改成 #define PANEL ${size}。`;
+}
+function renderWarn() {
+  const lines = [];
+  if (state.panelWarn) lines.push(state.panelWarn);
+  for (const bit of [1, 2, 4]) if (state.warn & bit) lines.push(WARN_TEXT[bit]);
+  warnEl.textContent = lines.map((l) => "⚠ " + l).join("\n");
+  warnEl.hidden = !lines.length;
+}
+// 預覽中止（函式庫偵測到卡住，或執行時出錯）的原因
+const STUCK = {
+  "babit-stuck-1": "預覽停住了：loop() 裡有一直在等時間的迴圈（例如 while (millis() - t0 < 500)）。\n動畫請用 seconds() 算出這一格該畫什麼，不要用迴圈等。",
+  "babit-stuck-2": "預覽停住了：loop() 裡一直呼叫 show()（例如寫在 while 或 for 迴圈裡）。\n每次 loop() 只畫一格，最後呼叫一次 show()。",
+  "babit-stuck-3": "預覽停住了：loop() 裡有一直在等聲音、傾斜或按鈕的迴圈（例如 while (!audio.beat())、while (!button1.clicked())）。\n同一格裡聲音、傾斜、按鈕都不會變：每一格檢查一次就好，用變數記住現在的狀態。",
+};
+function stopPreview(e) {
+  state.mod = null;
+  const msg = String((e && e.message) || e);
+  const key = Object.keys(STUCK).find((k) => msg.includes(k));
+  statusEl.textContent = "✗ 預覽停止";
+  showLog(key ? STUCK[key]
+              : "預覽執行時出錯（" + msg + "）。\n常見原因：陣列的索引超出範圍、除以 0。把這段訊息和程式一起貼給 AI 檢查。");
+}
+// 複製文字：先用剪貼簿 API，不行（權限、非安全環境）就用隱藏的 textarea；最後複製的內容放在 window.__bpCopied（測試用）
+async function copyText(text) {
+  window.__bpCopied = text;
+  try { await navigator.clipboard.writeText(text); return; } catch (_) { /* 改用下面的舊方法 */ }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  ta.remove();
+}
+
+for (let i = 0; i < 8; i++) bandsEl.appendChild(document.createElement("div"));
+const barEls = Array.from(bandsEl.children);
+
+// ── 聲音來源 ─────────────────────────────────────────────
+// 板子上是 INMP441 經 I²S 送來原始波形；這裡用筆電麥克風產生同一種資料，
+// 再交給 WASM 裡「與板子共用」的分析器算 level／band／beat。
+async function ensureCtx() {
+  if (!au.ac) {
+    au.ac = new (window.AudioContext || window.webkitAudioContext)();
+    au.an = au.ac.createAnalyser();
+    au.an.fftSize = 4096;          // 48kHz 下約 85ms，重新取樣後足夠填滿 1024 筆
+    au.buf = new Float32Array(au.an.fftSize);
+    au.rs = new Float32Array(au.an.fftSize);   // 重新取樣後的暫存
+  }
+  if (au.ac.state === "suspended") await au.ac.resume();
+  return au.ac;
+}
+function disconnectSrc() {
+  if (au.osc) { try { au.osc.stop(); } catch (_) {} au.osc = null; }
+  if (au.src) { try { au.src.disconnect(); } catch (_) {} au.src = null; }
+  au.kind = null;
+  micBtn.classList.remove("on"); toneBtn.classList.remove("on");
+}
+async function useMic() {
+  if (au.kind === "mic") { disconnectSrc(); meter.classList.remove("on"); return; }
+  try {
+    const ac = await ensureCtx();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+    });
+    disconnectSrc();
+    au.src = ac.createMediaStreamSource(stream);
+    au.src.connect(au.an);
+    au.kind = "mic";
+    micBtn.classList.add("on");
+    meter.classList.add("on");
+    if (state.mod) state.mod._bp_audio_set_rate(TARGET_RATE);
+    rateTxt.textContent = Math.round(ac.sampleRate/1000) + "→" + (TARGET_RATE/1000) + "kHz";
+  } catch (e) {
+    showLog("無法開啟麥克風：" + (e.message || e) + "\n（瀏覽器需要你按下允許）");
+  }
+}
+// 測試音：60Hz→8kHz 緩慢掃頻，用來確認頻段對應正確（低音在左、高音在右）
+async function useTone() {
+  if (au.kind === "tone") { disconnectSrc(); meter.classList.remove("on"); return; }
+  const ac = await ensureCtx();
+  disconnectSrc();
+  au.osc = ac.createOscillator();
+  const g = ac.createGain();
+  g.gain.value = 0.25;
+  au.osc.type = "sine";
+  au.osc.frequency.value = 60;
+  au.osc.connect(g); g.connect(au.an);   // 只接分析器，不接喇叭
+  au.osc.start();
+  au.kind = "tone"; au.sweep = 0;
+  toneBtn.classList.add("on");
+  meter.classList.add("on");
+  if (state.mod) state.mod._bp_audio_set_rate(TARGET_RATE);
+  rateTxt.textContent = Math.round(ac.sampleRate/1000) + "→" + (TARGET_RATE/1000) + "kHz";
+}
+// 每格畫面把最新的時域取樣搬進 WASM
+function pumpAudio() {
+  if (!au.kind || !state.mod) return;
+  if (au.kind === "tone" && au.osc) {
+    au.sweep = (au.sweep + 0.0032) % 1;                       // 約 5 秒掃完
+    au.osc.frequency.value = 60 * Math.pow(7500/60, au.sweep); // 對數掃頻（上限對齊最高頻段）
+  }
+  au.an.getFloatTimeDomainData(au.buf);
+  // 線性內插重新取樣到 16kHz（輸入取樣率隨裝置不同，44.1k 也能處理）
+  const ratio = au.ac.sampleRate / TARGET_RATE;
+  const outN = Math.floor((au.buf.length - 1) / ratio);
+  for (let i = 0; i < outN; i++) {
+    const src = i * ratio, i0 = src | 0, f = src - i0;
+    au.rs[i] = au.buf[i0] + (au.buf[i0 + 1] - au.buf[i0]) * f;
+  }
+  const cap = state.mod._bp_audio_capacity();
+  const n = Math.min(outN, cap);
+  const p = state.mod._bp_audio_buffer();
+  state.mod.HEAPF32.set(au.rs.subarray(outN - n, outN), p >> 2);
+  state.mod._bp_audio_commit(n);
+}
+function drawMeter() {
+  if (!au.kind || !state.mod) return;
+  lvlbar.style.width = (state.mod._bp_audio_level() * 100) + "%";
+  beatDot.className = state.mod._bp_audio_beat() ? "hit" : "";
+  for (let i = 0; i < barEls.length; i++)
+    barEls[i].style.height = Math.max(2, state.mod._bp_audio_band(i) * 56) + "px";
+}
+
+// ── Art-Net 燈板（可選的本地模式）─────────────────────────────
+// 瀏覽器不能送 UDP，由本機的橋（bridge/run_bridge.ps1）代送。偵測不到橋時
+// 靜默停用、每 3 秒重試，不影響預覽與燒錄。位址必須寫 127.0.0.1——
+// Chrome 只把 127.0.0.1／::1 視為可信任 loopback，寫 localhost 會被 mixed content 擋。
+// 送出的是與預覽完全相同的 8×8 RGB 畫面（192 bytes）；放大、燈序、顏色順序全在橋端。
+const art = { ws:null, ok:false, retry:null };
+const artPill = document.getElementById("artnet");
+const artBriW = document.getElementById("artbriw"), artBri = document.getElementById("artbri"), artBriV = document.getElementById("artbriv");
+function artnetConnect() {
+  try { art.ws = new WebSocket("ws://127.0.0.1:8940"); } catch (_) { return artnetRetry(); }
+  art.ws.binaryType = "arraybuffer";
+  art.ws.onopen = () => { art.ok = true; art.briTouched = false; artPill.hidden = false; artBriW.hidden = false; artPill.textContent = "燈板：已連線"; };
+  art.ws.onmessage = (e) => {
+    try {
+      const m = JSON.parse(e.data);
+      if (m.type === "status") {
+        const amp = m.ma != null ? ` · 約 ${(m.ma / 1000).toFixed(1)} A` + (m.maxMa && m.maRaw > m.maxMa ? `（原 ${(m.maRaw / 1000).toFixed(1)} A，已壓到上限）` : "") : "";
+        artPill.textContent = `燈板 ${m.target}：${m.fps} fps` + amp + (m.test ? `（測試：${m.test}）` : "");
+        if (m.brightness != null && !art.briTouched) { artBri.value = Math.round(m.brightness * 100); artBriV.textContent = artBri.value + "%"; }
+      }
+    } catch (_) {}
+  };
+  art.ws.onclose = art.ws.onerror = () => {
+    if (art.ok) artPill.textContent = "燈板：已斷線，重試中…";
+    artBriW.hidden = true;
+    art.ok = false; art.ws = null; artnetRetry();
+  };
+}
+function artnetRetry() { clearTimeout(art.retry); art.retry = setTimeout(artnetConnect, 3000); }
+function artnetSend(fb) {
+  // bufferedAmount 是背壓保險：橋若變慢，寧可丟幀也不讓佇列堆積造成延遲累積
+  if (art.ok && art.ws && art.ws.readyState === 1 && art.ws.bufferedAmount < 2048) art.ws.send(fb);
+}
+// 亮度拉桿：只改橋的執行期設定（持久值在 bridge/config.json 的 brightness）
+artBri.oninput = () => {
+  art.briTouched = true; artBriV.textContent = artBri.value + "%";
+  if (art.ws && art.ws.readyState === 1) art.ws.send(JSON.stringify({ type: "config", brightness: artBri.value / 100 }));
+};
+artnetConnect();
+window.__bpArt = art;
+
+// 畫布固定 480×480，格數跟著編出來的模組（8×8：每格 52、間隔 8；16×16：每格 26、間隔 3）
+function gridOf(N) {
+  const gap = N <= 8 ? 8 : 3, cell = Math.floor((472 - (N - 1) * gap) / N);
+  return { gap, cell, r: Math.max(3, Math.round(cell * 0.2)), pad: (480 - N * cell - (N - 1) * gap) / 2 };
+}
+// 旋鈕與按鈕（預覽沒有硬體）：滑桿＝knob.value()；按住按鈕＝pressed()。按下時另外記一筆，
+// 就算按得比一格還快（不到 1/60 秒就放開），下一格也會算成「按了一下」（clicked()）
+const knobEl = document.getElementById("knob"), knobV = document.getElementById("knobv");
+const input = { down:[false, false], latch:[false, false] };
+knobEl.addEventListener("input", () => { knobV.textContent = knobEl.value + "%"; });
+["btn1", "btn2"].forEach((id, i) => {
+  const b = document.getElementById(id);
+  const release = () => { input.down[i] = false; };
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); input.down[i] = true; input.latch[i] = true; });
+  b.addEventListener("pointerup", release);
+  b.addEventListener("pointerleave", release);
+  b.addEventListener("pointercancel", release);
+  b.addEventListener("click", (e) => { if (e.detail === 0) input.latch[i] = true; });   // 用鍵盤按（Tab 到按鈕、按空白鍵）
+});
+window.__bpInput = input;   // 測試用
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!state.mod || now - state.last < state.interval - 1) return;
+  state.last = now;
+  pumpAudio();
+  const t = (now - state.t0) / 1000;
+  state.mod._bp_input_set(knobEl.value / 100, input.down[0] || input.latch[0] ? 1 : 0, input.down[1] || input.latch[1] ? 1 : 0);
+  input.latch[0] = input.latch[1] = false;
+  try { state.mod._bp_tick(t); } catch (e) { stopPreview(e); return; }
+  state.ticks++;
+  if (state.ticks === 10 || state.ticks % 60 === 0) {   // 跑幾格後看有沒有「預覽正常、板子會出問題」的寫法
+    const w = state.mod._bp_warn();
+    if (w !== state.warn) { state.warn = w; renderWarn(); }
+  }
+  const N = state.n, g = gridOf(N);
+  const fb = state.mod.HEAPU8.subarray(state.ptr, state.ptr + N*N*3);
+  // 程式用 brightness() 調低亮度時預覽跟著變暗（預設亮度＝原本的樣子；板子另外乘上電源的亮度上限）
+  const gain = Math.min(1, state.mod._bp_brightness() / state.mod._bp_brightness_default());
+  ctx.clearRect(0, 0, 480, 480);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = (y*N + x) * 3;
+    ctx.fillStyle = `rgb(${Math.round(fb[i]*gain)},${Math.round(fb[i+1]*gain)},${Math.round(fb[i+2]*gain)})`;
+    ctx.beginPath();
+    ctx.roundRect(g.pad + x*(g.cell+g.gap), g.pad + y*(g.cell+g.gap), g.cell, g.cell, g.r);
+    ctx.fill();
+  }
+  drawMeter();
+  if (N === 8) artnetSend(fb);   // Art-Net 橋目前只收 8×8 畫面（192 bytes）
+  state.frames++;
+  if (now - state.fpsT > 500) {
+    state.fps = Math.round(state.frames*1000/(now - state.fpsT));
+    state.frames = 0; state.fpsT = now;
+    hud.textContent = `t = ${t.toFixed(1)}s ・ ${state.fps}/${state.target} fps`;
+  }
+}
+requestAnimationFrame(frame);
+
+// 背景預編帶 bg=1：編譯站只留最新的一個在排隊（被取代的回 superseded），連點幾個範例再按燒錄不用等一長串。
+// 燒錄時 bg=false：一定會編，不會被取代
+function precompileFirmware(code, bg = true) {
+  if (fw.code === code && (fw.key || fw.pending)) return fw.pending || Promise.resolve({ ok:true, key:fw.key });
+  fw.code = code; fw.key = null;
+  setFw("韌體：背景編譯中…");
+  fw.pending = fetch("/compile/firmware" + (bg ? "?bg=1" : ""), { method:"POST", headers:{ "Content-Type":"text/plain; charset=utf-8" }, body:code })
+    .then(r => r.json())
+    .then(j => {
+      if (fw.code !== code) return j;      // 已經換了程式：舊的結果（含被取代的）不動狀態列，也不清掉新請求的 pending
+      fw.pending = null;
+      if (j.ok) { fw.key = j.key; setFw(`韌體：就緒（${j.cached ? "快取" : (j.ms/1000).toFixed(1)+"s"}，${Math.round(j.size/1024)}KB）`); }
+      else setFw(j.superseded ? "" : "韌體：編譯失敗（按⚡看詳情）");
+      return j;
+    })
+    .catch(e => { if (fw.code === code) { fw.pending = null; setFw("韌體：連線失敗"); } return { ok:false, log:String(e) }; });
+  return fw.pending;
+}
+
+async function run() {
+  runBtn.disabled = true;
+  hideLog();
+  statusEl.textContent = "編譯中…";
+  const tStart = performance.now();
+  try {
+    const r = await fetch("/compile/preview", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      body: codeEl.value,
+    });
+    const j = await r.json();
+    const ms = Math.round(performance.now() - tStart);
+    if (!j.ok) {
+      warnEl.hidden = true;
+      showCompileError(j.log || "（沒有錯誤訊息）");
+      statusEl.textContent = `✗ 編譯失敗（${ms}ms）— 錯誤訊息在下方`;
+      return;
+    }
+    const factory = new Function(j.js + ";return createBatoPixel;")();
+    const mod = await factory({ print: previewPrint, printErr: previewPrint });   // 程式的 Serial 輸出（除錯模式顯示在文字視窗）
+    state.mod = mod;
+    state.ptr = mod._bp_framebuffer();
+    state.n = mod._bp_width();
+    state.target = mod._bp_fps();
+    state.interval = 1000 / state.target;
+    state.t0 = performance.now();
+    state.last = -Infinity;
+    state.ticks = 0; state.warn = 0;
+    state.panelWarn = panelWarnText(state.n);
+    renderWarn();
+    if (au.ac) mod._bp_audio_set_rate(TARGET_RATE);   // 重編後要重設取樣率
+    statusEl.textContent = `✓ 執行中（往返 ${ms}ms）`;
+    precompileFirmware(codeEl.value);
+  } catch (e) {
+    statusEl.textContent = "連線失敗——編譯站（run_station.ps1）有開嗎？";
+  } finally {
+    runBtn.disabled = false;
+  }
+}
+
+const MANUAL_HINT =
+`自動進入燒錄模式失敗時的手動步驟：
+1. 按住板上 BOOT 鍵 → 點一下 RESET 鍵 → 放開 BOOT
+2. 再按一次「⚡ 燒錄到板子」，在跳出的視窗選新的序列埠
+3. 燒錄完成後按一下 RESET 讓程式開始跑`;
+
+const panelOfCode = (code) => { const m = code.match(/^[ \t]*#[ \t]*define[ \t]+PANEL[ \t]+(\d+)/m); return m ? Number(m[1]) : null; };
+
+async function flash() {
+  const p = panelOfCode(codeEl.value);
+  if (p && p !== size && !confirm(`這段程式是 ${p}×${p} 燈板用的（#define PANEL ${p}），現在選的是 ${size}×${size} 燈板，確定要燒錄嗎？`)) return;
+  flashBtn.disabled = true; runBtn.disabled = true;
+  hideLog();
+  let transport = null, flashed = false;
+  try {
+    if (!("serial" in navigator)) {
+      showLog("這個瀏覽器不支援 Web Serial，請改用 Chrome 或 Edge。");
+      return;
+    }
+    await serialDisconnect();      // 除錯模式正接著板子：先放開序列埠，燒錄才接得上
+    setFw("韌體：準備中…");
+    // 燒錄前一律問編譯站：頁面開著的時候函式庫可能已經更新，頁面記住的韌體會是舊的（2026-10-14 實際踩到）。
+    // 函式庫沒變時編譯站直接回快取，不會重編。
+    fw.code = null;
+    const j = await precompileFirmware(codeEl.value, false);
+    if (!j.ok) { showCompileError(j.log || "韌體編譯失敗"); setFw("韌體：編譯失敗"); return; }
+    const binResp = await fetch("/firmware/" + j.key);
+    if (!binResp.ok) { showLog("韌體下載失敗，請重試"); return; }
+    const buf = new Uint8Array(await binResp.arrayBuffer());
+    let binStr = "";
+    for (let i = 0; i < buf.length; i += 8192)
+      binStr += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
+
+    setFw("請在視窗中選擇板子的序列埠…");
+    const port = await navigator.serial.requestPort();
+    transport = new Transport(port, true);
+    const loader = new ESPLoader({
+      transport, baudrate: 921600, romBaudrate: 115200,
+      terminal: { clean(){}, writeLine(l){ setFw(String(l).slice(0,80)); }, write(d){} },
+    });
+    setFw("連線中（與板子握手）…");
+    await loader.main();
+    setFw("燒錄中 0%");
+    await loader.writeFlash({
+      fileArray: [{ data: binStr, address: 0x0 }],
+      flashSize: "keep", flashMode: "keep", flashFreq: "keep",
+      eraseAll: false, compress: true,
+      reportProgress: (fi, written, total) => setFw(`燒錄中 ${Math.round(written / total * 100)}%`),
+    });
+    try { if (loader.hardReset) await loader.hardReset(); } catch (_) {}
+    setFw("✓ 燒錄完成——板子執行中，可拔線帶走");
+    flashed = true;
+  } catch (e) {
+    setFw("✗ 燒錄失敗");
+    showLog((e && e.message ? e.message : String(e)) + "\n\n" + MANUAL_HINT);
+  } finally {
+    if (transport) { try { await transport.disconnect(); } catch (_) {} }
+    flashBtn.disabled = false; runBtn.disabled = false;
+  }
+  if (flashed && dbg.on) serialReconnectAfterFlash();   // 除錯模式：燒完接上板子，看它印出來的數值
+}
+
+// ── 除錯模式：右邊的燈板預覽換成序列埠的文字視窗 ─────────────────────────
+// 按「🔧 除錯模式」載入內建的「感應器檢查」程式（每 0.2 秒用 Serial 印出旋鈕、按鈕、傾斜、聲音的數值）。
+// 燒錄完自動接上同一個序列埠，顯示板子印出來的文字；沒接板子時顯示預覽程式的 Serial 輸出。
+const debugBtn = document.getElementById("debug"), canvasEl = document.getElementById("m");
+const serialWrap = document.getElementById("serialwrap"), serialOut = document.getElementById("serialout");
+const serialStat = document.getElementById("serialstat"), serialConn = document.getElementById("serialconn");
+const dbg = { on:false, port:null, reader:null, piped:null, text:"" };
+const SERIAL_KEEP = 30000;           // 文字視窗最多留這麼多字（約 150 行），舊的捲掉
+const ESPRESSIF_VID = 0x303A;        // ESP32-S3 內建 USB 序列埠的廠商代碼
+
+function serialAppend(s) {
+  const atBottom = serialOut.scrollTop + serialOut.clientHeight >= serialOut.scrollHeight - 30;
+  dbg.text = (dbg.text + s).slice(-SERIAL_KEEP);
+  serialOut.textContent = dbg.text;
+  if (atBottom) serialOut.scrollTop = serialOut.scrollHeight;   // 看舊的行時不要一直被拉回最下面
+}
+// 預覽程式的 Serial 輸出（emcc 的 stdout）：除錯模式沒接板子時顯示在文字視窗，其他時候照舊印到開發者工具
+function previewPrint(s) {
+  if (dbg.on && !dbg.port) serialAppend(s + "\n");
+  else console.log(s);
+}
+function serialStatus() {
+  serialStat.textContent = dbg.port ? "顯示：板子印出來的文字"
+    : "顯示：預覽程式印出來的文字。按「⚡ 燒錄到板子」燒完會自動接上板子；已經燒好的板子按「連線板子」";
+  serialConn.textContent = dbg.port ? "中斷" : "連線板子";
+}
+async function serialOpen(port) {
+  await port.open({ baudRate: 115200 });
+  dbg.port = port;
+  serialStatus();
+  serialAppend("── 接上板子 ──\n");
+  const decoder = new TextDecoderStream();
+  dbg.piped = port.readable.pipeTo(decoder.writable).catch(() => {});
+  const reader = dbg.reader = decoder.readable.getReader();
+  (async () => {
+    try {
+      for (;;) { const { value, done } = await reader.read(); if (done) break; if (value) serialAppend(value); }
+    } catch (_) {}
+    if (dbg.port === port) {         // 不是按「中斷」：板子被拔掉或重開了
+      dbg.port = null; dbg.reader = null;
+      try { await port.close(); } catch (_) {}
+      serialAppend("── 板子斷線了 ──\n");
+      serialStatus();
+    }
+  })();
+}
+async function serialDisconnect() {
+  const port = dbg.port;
+  if (!port) return;
+  dbg.port = null;
+  try { await dbg.reader.cancel(); } catch (_) {}
+  try { await dbg.piped; } catch (_) {}
+  try { await port.close(); } catch (_) {}
+  dbg.reader = null;
+  serialStatus();
+}
+// 之前允許過的 ESP32 序列埠：不用再跳視窗選
+async function grantedBoardPorts() {
+  if (!("serial" in navigator)) return [];
+  return (await navigator.serial.getPorts()).filter((p) => (p.getInfo().usbVendorId || 0) === ESPRESSIF_VID);
+}
+async function serialConnectClick() {
+  if (dbg.port) { await serialDisconnect(); serialAppend("── 中斷 ──\n"); return; }
+  if (!("serial" in navigator)) { serialStat.textContent = "這個瀏覽器不支援 Web Serial，請改用 Chrome 或 Edge。"; return; }
+  for (const p of await grantedBoardPorts()) { try { await serialOpen(p); return; } catch (_) {} }
+  try { await serialOpen(await navigator.serial.requestPort()); }
+  catch (e) { if (!e || e.name !== "NotFoundError") serialStat.textContent = "連線失敗：" + (e && e.message || e); }
+}
+// 燒錄完板子會重開，USB 序列埠會斷開再出現：等它回來再接（最多約 8 秒）
+async function serialReconnectAfterFlash() {
+  serialAppend("── 燒錄完成，等板子重開… ──\n");
+  for (let i = 0; i < 16 && dbg.on && !dbg.port; i++) {
+    await new Promise((ok) => setTimeout(ok, 500));
+    for (const p of await grantedBoardPorts()) { try { await serialOpen(p); return; } catch (_) {} }
+  }
+  if (dbg.on && !dbg.port) serialStat.textContent = "沒有自動接上：按「連線板子」選板子的序列埠";
+}
+async function setDebug(on) {
+  if (on) {
+    // 程式改過時先問：按「取消」保留目前的程式，只把右邊換成文字視窗（看學員自己用 Serial 印的東西）
+    const load = !isDirty() || confirm("載入「感應器檢查」會蓋掉目前的程式碼，確定嗎？\n" +
+      "（按「取消」：保留目前的程式，只把右邊換成文字視窗，看它用 Serial 印出來的東西）");
+    if (load) {
+      let code;
+      try {
+        const r = await fetch("/debug-sketch");
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        code = await r.text();
+      } catch (e) { statusEl.textContent = "載入感應器檢查程式失敗：" + e.message; return; }
+      setCode(code.replace(/^([ \t]*#define[ \t]+PANEL[ \t]+)\d+/m, "$1" + size), null);   // 跟著目前的燈板尺寸
+    }
+    dbg.on = true; dbg.text = ""; serialOut.textContent = "";
+    if (load) run();
+  } else {
+    await serialDisconnect();
+    dbg.on = false;
+  }
+  debugBtn.classList.toggle("on", dbg.on);
+  canvasEl.hidden = dbg.on; hud.hidden = dbg.on; serialWrap.hidden = !dbg.on;
+  serialStatus();
+}
+debugBtn.addEventListener("click", () => setDebug(!dbg.on));
+serialConn.addEventListener("click", serialConnectClick);
+document.getElementById("serialclear").addEventListener("click", () => { dbg.text = ""; serialOut.textContent = ""; });
+window.__bpDbg = dbg;   // 測試用
+
+// ── 範例 ──────────────────────────────────────────────────────────
+// 清單與內容來自編譯站的 examples/8x8、examples/16x16：子資料夾＝分類（分組顯示），檔名＝卡片標題。
+// 學員（或他的 AI）新增的檔案重新整理頁面就會出現，縮圖由編譯站自動產生。換範例不必改這個頁面。
+const galleryEl = document.getElementById("gallery");
+const cardsEl = document.getElementById("cards");
+let galleryList = [];       // 目前尺寸的範例（編譯站已依分類排好，「我的範例」在最後）
+let loadedCode = "";        // 最後一次載入的程式，用來判斷學員有沒有改過
+let currentId = null;       // 目前載入的範例（卡片亮燈）
+
+const isDirty = () => codeEl.value.trim() !== "" && codeEl.value !== loadedCode;
+
+async function loadGallery() {
+  try { galleryList = await (await fetch("/examples?size=" + size)).json(); } catch (_) { galleryList = []; }
+  if (!Array.isArray(galleryList)) galleryList = [];
+  renderGallery();
+}
+
+function renderGallery() {
+  cardsEl.innerHTML = "";
+  galleryEl.hidden = false;
+  if (!galleryList.length) {
+    const p = document.createElement("div");
+    p.className = "gempty";
+    p.textContent = `${size}×${size} 燈板還沒有範例`;
+    cardsEl.appendChild(p);
+    return;
+  }
+  let row = null, cat = null;
+  for (const ex of galleryList) {
+    if (!row || ex.category !== cat) {                  // 分類換了：開新的一組
+      cat = ex.category;
+      const g = document.createElement("div");
+      g.className = "group";
+      const lb = document.createElement("div");
+      lb.className = "glabel";
+      lb.textContent = cat || "其他";
+      row = document.createElement("div");
+      row.className = "gcards";
+      g.append(lb, row);
+      cardsEl.appendChild(g);
+    }
+    row.appendChild(makeCard(ex));
+  }
+}
+
+function makeCard(ex) {
+  const b = document.createElement("button");
+  b.className = "card" + (ex.id === currentId ? " on" : "");
+  b.type = "button";
+  b.dataset.id = ex.id;
+  const th = document.createElement("div");
+  th.className = "thumb";
+  if (ex.thumb) {
+    // 讀圖的寬高推出格數（每格正方形），不必在清單裡另外標；讀不到（程式有錯、還在產生）就留黑底
+    const im = new Image();
+    im.onload = () => {
+      th.style.backgroundImage = "url(" + ex.thumb + ")";
+      th.style.setProperty("--frames", Math.max(1, Math.round(im.naturalWidth / im.naturalHeight)));
+    };
+    im.src = ex.thumb;
+  }
+  const nm = document.createElement("div");
+  nm.className = "cname";
+  nm.textContent = ex.title;
+  const ds = document.createElement("div");
+  ds.className = "cdesc";
+  ds.textContent = ex.desc || "";
+  b.append(th, nm, ds);
+  b.addEventListener("click", () => pickExample(ex));
+  return b;
+}
+
+function setCode(code, id) {
+  codeEl.value = code;
+  loadedCode = codeEl.value;   // 用編輯區讀回來的內容比對：textarea 會把 CRLF 換成 LF（學員電腦用 git 取出的範例是 CRLF）
+  currentId = id;
+  for (const c of cardsEl.querySelectorAll(".card")) c.classList.toggle("on", c.dataset.id === id);
+}
+
+async function pickExample(ex, force = false) {
+  if (!force && isDirty() && !confirm("載入「" + ex.title + "」會蓋掉目前的程式碼，確定嗎？")) return;
+  let code;
+  try {
+    const r = await fetch("/example?id=" + encodeURIComponent(ex.id));
+    if (!r.ok) throw new Error(r.status);
+    code = await r.text();
+  } catch (e) {
+    statusEl.textContent = "載入範例失敗：" + e.message;
+    return;
+  }
+  setCode(code, ex.id);
+  run();
+}
+
+// 載入目前尺寸的第一個範例；沒有範例（或連不上）就用內建的彩虹
+async function loadFirstExample() {
+  if (galleryList.length) await pickExample(galleryList[0], true);
+  else { setCode(defaultCode(size), null); run(); }
+}
+
+function renderSize() {
+  sz8.classList.toggle("on", size === 8);
+  sz16.classList.toggle("on", size === 16);
+}
+
+// 切換＝換一組範例。編輯區是學員改過或貼上的程式就不碰它（不跳確認、不會丟程式），只更新範例庫與尺寸提醒；
+// 編輯區還是原封不動的範例，才換成新尺寸的第一個範例。
+async function switchSize(n) {
+  if (n === size) return;
+  const keep = isDirty();
+  size = n;
+  try { localStorage.setItem(SIZE_KEY, String(n)); } catch (_) {}
+  renderSize();
+  await loadGallery();
+  if (keep) {
+    state.panelWarn = panelWarnText(state.n);      // 最後一次執行的程式是哪一種燈板
+    renderWarn();
+    return;
+  }
+  await loadFirstExample();
+}
+
+// ── 新增範例：把編輯區的程式存到 examples/<尺寸>/我的範例/<名稱>.ino，縮圖由編譯站自動產生 ──
+const addBtn = document.getElementById("addex"), addPanel = document.getElementById("addpanel");
+const exName = document.getElementById("exname"), exErr = document.getElementById("exerr"), exNote = document.getElementById("exnote");
+function toggleAddPanel(open) {
+  addPanel.hidden = !open;
+  addBtn.classList.toggle("on", open);
+  exErr.hidden = true;
+  if (open) {
+    exNote.textContent = `會把上面編輯區的程式存到「${size}×${size}／我的範例」，名稱就是卡片上的標題，縮圖會自動產生。官方範例不會被改到。`;
+    exName.focus();
+  }
+}
+async function saveExample(overwrite = false) {
+  const name = exName.value.trim();
+  let r, j;
+  try {
+    r = await fetch("/examples", { method: "POST", headers: { "Content-Type": "application/json" },
+                                   body: JSON.stringify({ size, name, code: codeEl.value, overwrite }) });
+    j = await r.json();
+  } catch (e) { exErr.textContent = "存檔失敗：" + e.message; exErr.hidden = false; return; }
+  if (r.status === 409 && !overwrite) {
+    if (confirm(`「${name}」已經有了，要用目前的程式覆蓋嗎？`)) return saveExample(true);
+    return;
+  }
+  if (!j.ok) { exErr.textContent = j.error || "存檔失敗"; exErr.hidden = false; return; }
+  toggleAddPanel(false);
+  loadedCode = codeEl.value;
+  currentId = j.id;
+  await loadGallery();
+  statusEl.textContent = `✓ 已存成範例「${name}」`;
+}
+addBtn.addEventListener("click", () => toggleAddPanel(addPanel.hidden));
+document.getElementById("exsave").addEventListener("click", () => saveExample());
+document.getElementById("excancel").addEventListener("click", () => toggleAddPanel(false));
+exName.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveExample(); } });
+
+// ── 複製給 AI 的說明（AGENTS.md）：學員貼到自己的 AI 對話框，AI 就知道程式要怎麼寫 ──
+document.getElementById("aiguide").addEventListener("click", async () => {
+  try {
+    const r = await fetch("/ai-guide");
+    if (!r.ok) throw new Error(r.status);
+    await copyText(await r.text());
+    statusEl.textContent = "✓ 已複製給 AI 的說明：貼到 AI 的對話框，再告訴它你想做什麼動畫";
+  } catch (e) {
+    statusEl.textContent = "複製失敗：" + e.message;
+  }
+});
+
+renderSize();
+loadGallery().then(loadFirstExample);   // 開頁就載入第一個範例並執行：預覽直接出現畫面
+
+runBtn.addEventListener("click", run);
+flashBtn.addEventListener("click", flash);
+micBtn.addEventListener("click", useMic);
+toneBtn.addEventListener("click", useTone);
+sz8.addEventListener("click", () => switchSize(8));
+sz16.addEventListener("click", () => switchSize(16));
+document.getElementById("copylog").addEventListener("click", async () => {
+  await copyText(logEl.textContent);
+  statusEl.textContent = "✓ 已複製錯誤訊息：貼到 AI 的對話框，請它修正";
+});
+window.__bpRun = run;
+window.__bpTone = useTone;
+codeEl.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); run(); }
+});
+</script>
+</body>
+</html>
