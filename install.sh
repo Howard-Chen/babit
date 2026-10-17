@@ -39,11 +39,14 @@ if [ -z "$PACK" ]; then
   done
 fi
 { [ -n "$PACK" ] && [ -d "$PACK/$PLAT" ]; } || fail "找不到隨身碟上的「babit安裝包」資料夾：請插上隨身碟再執行一次"
+PACK="$(cd "$PACK" && pwd)"
+# 工作位置換到家目錄：從隨身碟按兩下時工作位置在隨身碟上；學員照提示中途拔掉隨身碟後，之後再開的程式會找不到工作位置
+cd "$HOME" 2>/dev/null || cd /
 SRC="$PACK/$PLAT"
 say "安裝包：$PACK（$PLAT）"
 say "安裝位置：$DEST"
 
-# 磁碟空間：第一次安裝約要 11 GB（裝完約 8.5 GB，安裝時另外暫放 1.9 GB 的 ESP32 壓縮檔），先檢查，免得裝到一半才失敗；
+# 磁碟空間：第一次安裝約要 11 GB（裝完約 8.5 GB，安裝時另外暫放 1.9 GB 的 ESP32 壓縮檔；emsdk 壓縮檔解完就刪），先檢查，免得裝到一半才失敗；
 # ESP32 核心已經裝好（重跑）就不檢查
 NEED_GB="${BABIT_NEED_GB:-11}"
 if [ ! -d "$DEST/tools/arduino/data/packages/esp32/hardware/esp32/3.3.11" ]; then
@@ -123,33 +126,46 @@ EOF
 # 我們只裝隨身碟裡的 Adafruit NeoPixel（--zip-path），用不到這份索引，放一份空的就不必連網
 mkdir -p "$ARD/data"
 [ -f "$ARD/data/library_index.json" ] || echo '{"libraries":[]}' > "$ARD/data/library_index.json"
-if [ ! -d "$ARD/data/packages/esp32/hardware/esp32/3.3.11" ]; then
+# 隨身碟比學員少：要用的壓縮檔先全部複製到電腦（staging），說可以拔了，再在電腦上解壓（解壓很慢，不該佔著隨身碟）
+NEED_CORE=0; [ -d "$ARD/data/packages/esp32/hardware/esp32/3.3.11" ] || NEED_CORE=1
+if [ "$NEED_CORE" = 1 ]; then
   mkdir -p "$ARD/data" "$ARD/staging/packages"
   cp "$PACK/package_index.json" "$PACK/package_esp32_index.json" "$ARD/data/" || fail "複製套件清單失敗"
   say "複製 ESP32 工具鏈（約 1.9 GB）…"
   find "$SRC/esp32" "$SRC/builtin" -type f ! -name '*checksums*' -exec cp {} "$ARD/staging/packages/" \; \
     || fail "複製 ESP32 工具鏈失敗"
-  say "安裝 ESP32 核心 3.3.11（解壓縮，要幾分鐘，請不要關掉視窗）…"
-  "$AC" --config-file "$CFG" core install esp32:esp32@3.3.11 || fail "安裝 ESP32 核心失敗"
 fi
 if ! ls -d "$ARD"/user/libraries/Adafruit_NeoPixel* >/dev/null 2>&1; then
   "$AC" --config-file "$CFG" lib install --zip-path "$PACK/libraries/Adafruit_NeoPixel-1.15.5.zip" \
     || fail "安裝 Adafruit NeoPixel 失敗"
 fi
-
-# 7. emsdk（網頁預覽的編譯器）：照 emsdk 的資料夾配置直接解開，不必跑 emsdk.py（Mac 不一定有 python）。
-#    .emscripten 在四個壓縮檔都解完後才寫，拿它當完成記號
+# 7. emsdk（網頁預覽的編譯器）的四個壓縮檔也先複製過來
 EM="$TOOLS/emsdk"
-if [ ! -f "$EM/.emscripten" ]; then
-  say "安裝網頁預覽編譯器（emsdk 6.0.8，要幾分鐘，請不要關掉視窗）…"
+EMS="$ARD/staging/emsdk"
+NEED_EM=0; [ -f "$EM/.emscripten" ] || NEED_EM=1
+if [ "$NEED_EM" = 1 ]; then
+  say "複製網頁預覽編譯器…"
   PYA="$(pick "$SRC"/emsdk/python-*.tar.gz)" || fail "安裝包不完整：找不到 $PLAT/emsdk/python-*.tar.gz"
   NODEA="$(pick "$SRC"/emsdk/node-*.tar.gz)" || fail "安裝包不完整：找不到 $PLAT/emsdk/node-*.tar.gz"
   WASMA="$(pick "$SRC"/emsdk/wasm-binaries*.tar.xz)" || fail "安裝包不完整：找不到 $PLAT/emsdk/wasm-binaries*.tar.xz"
+  rm -rf "$EMS"; mkdir -p "$EMS" || fail "建立資料夾失敗：$EMS"
+  cp "$PACK/emsdk-6.0.8.zip" "$PYA" "$NODEA" "$WASMA" "$EMS/" || fail "複製網頁預覽編譯器失敗"
+fi
+
+# 隨身碟上的東西到這裡都複製完了，後面只用電腦上的檔案
+echo
+printf '  \033[32m%s\033[0m\n' "隨身碟用完了，可以拔下來給下一位同學（安裝還沒完成，這個視窗不要關）。"
+echo
+
+#    照 emsdk 的資料夾配置直接解開，不必跑 emsdk.py（Mac 不一定有 python）。
+#    .emscripten 在四個壓縮檔都解完後才寫，拿它當完成記號；解完就刪掉複製來的壓縮檔（先解 emsdk 再裝核心，佔用空間的高峰比較低）
+if [ "$NEED_EM" = 1 ]; then
+  say "安裝網頁預覽編譯器（emsdk 6.0.8，要幾分鐘，請不要關掉視窗）…"
   rm -rf "$EM"
-  unpack "$PACK/emsdk-6.0.8.zip" "$EM" 1
-  unpack "$PYA" "$EM/python/3.13.3_64bit" 1
-  unpack "$NODEA" "$EM/node/24.19.0_64bit" 1
-  unpack "$WASMA" "$EM/upstream" 1
+  unpack "$EMS/emsdk-6.0.8.zip" "$EM" 1
+  unpack "$EMS/$(basename "$PYA")" "$EM/python/3.13.3_64bit" 1
+  unpack "$EMS/$(basename "$NODEA")" "$EM/node/24.19.0_64bit" 1
+  unpack "$EMS/$(basename "$WASMA")" "$EM/upstream" 1
   cat > "$EM/.emscripten" <<'EOF'
 NODE_JS = '$CFGDIR/node/24.19.0_64bit/bin/node'
 PYTHON = '$CFGDIR/python/3.13.3_64bit/bin/python3'
@@ -157,6 +173,11 @@ LLVM_ROOT = '$CFGDIR/upstream/bin'
 BINARYEN_ROOT = '$CFGDIR/upstream'
 EMSCRIPTEN_ROOT = '$CFGDIR/upstream/emscripten'
 EOF
+  rm -rf "$EMS"
+fi
+if [ "$NEED_CORE" = 1 ]; then
+  say "安裝 ESP32 核心 3.3.11（解壓縮，要幾分鐘，請不要關掉視窗）…"
+  "$AC" --config-file "$CFG" core install esp32:esp32@3.3.11 || fail "安裝 ESP32 核心失敗"
 fi
 # 隔離屬性：從隨身碟解開的檔案通常沒有；有的話拿掉，免得 Gatekeeper 擋下未簽章的工具
 xattr -dr com.apple.quarantine "$TOOLS" 2>/dev/null || true

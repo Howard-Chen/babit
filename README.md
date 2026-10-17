@@ -10,8 +10,9 @@
 2. 貼上一行指令（只從 GitHub 下載幾 MB 的程式，工具鏈全部從隨身碟裝）：
    - Windows（開「PowerShell」）：`powershell -ExecutionPolicy Bypass -Command "iex ((irm https://raw.githubusercontent.com/Howard-Chen/babit/main/install.ps1).TrimStart([char]0xFEFF))"`（TrimStart 拿掉檔頭的 BOM，不然開頭會冒一段紅字）
    - Mac（開「終端機」）：`curl -fsSL https://raw.githubusercontent.com/Howard-Chen/babit/main/install.sh | bash`
-   - 或按兩下安裝包裡的 `Windows安裝.bat`／`Mac安裝.command`（不在這個 repo，只放隨身碟）：做的事一樣，安裝包就用它所在的資料夾
+   - 或按兩下安裝包裡的 `Windows安裝.bat`／`Mac安裝.command`（來源在 `usb/`，改了要複製到安裝包）：做的事一樣，安裝包就用它所在的資料夾
 3. 裝在 `C:\babit`（Mac：`~/babit`），工具鏈在裡面的 `tools/`（不進版控）。電腦要有約 11 GB 空間（裝完約 8.5 GB；安裝程式一開始會先檢查）。安裝包放在電腦硬碟上實測約 2 分鐘，從隨身碟裝視隨身碟速度再多幾分鐘。完成後桌面有 babit 捷徑：按兩下會先自動更新（`git pull`），再啟動編譯站、打開工具頁。
+   - 隨身碟比學員少：要用的壓縮檔先全部複製到電腦，複製完就顯示「隨身碟用完了，可以拔下來給下一位同學」，解壓縮和第一次編譯在拔掉之後做。安裝程式先把工作位置換到電腦上，兩個雙擊檔也不會再回隨身碟讀自己。
 4. 重裝或補裝：同一行指令再跑一次，已經裝好的部分會略過。
 
 > Mac 版（`install.sh`、`babit.command`）尚未在 Mac 上實測。
@@ -54,6 +55,7 @@ babit.command            學員啟動器（Mac，同上；安裝程式在桌面�
 install.ps1、install.sh  學員安裝程式（Windows／Mac）：工具鏈從隨身碟「babit安裝包」離線裝進 tools/，程式用可攜版 git
                          下載，最後先編一次預熱。BABIT_DEST／BABIT_PACK／BABIT_REPO／BABIT_BRANCH／BABIT_NO_SHORTCUT 可改設定
 tools/                   安裝程式放的工具鏈：git、arduino-cli（＋ arduino-cli.yaml、arduino/）、emsdk（不進版控）
+usb/                     隨身碟「babit安裝包」最上層的兩個雙擊檔（Windows安裝.bat 只能用 ASCII＋CRLF），改了要複製到安裝包
 tests/                   安裝程式與啟動器的情境測試（見下方「測試」）；fake_raw.js 在本機模擬 GitHub raw
 icon.ico                 啟動器圖示（4×4 點陣，桌面好認）
 AGENTS.md                給 AI 的說明書：學員程式的格式、規則、函式、四個完整範例（CLAUDE.md 引用它）
@@ -144,9 +146,9 @@ node station/test_debug.js              除錯模式的感應器檢查程式：�
 node examples/test_examples.js          官方範例雙目標驗收＋縮圖是最新的（拼圖 examples/preview.png）
 node station/test_ui.js                 工具頁操作（puppeteer，預設借 D:/CSH/Design 的；BATOPIXEL_PUPPETEER 可改）
 （情境測試：需要桌面的 babit安裝包與開發機的 git、node，各跑幾分鐘）
-powershell -ExecutionPolicy Bypass -File tests\install_win.ps1    安裝程式：下載失敗後重跑、解壓到一半、中文帳號、一行指令
+powershell -ExecutionPolicy Bypass -File tests\install_win.ps1    安裝程式：下載失敗後重跑、解壓到一半、中文帳號、一行指令、照提示中途拔隨身碟（subst 模擬；加 u3 另做一次全新安裝，約 8 GB）
 powershell -ExecutionPolicy Bypass -File tests\launcher_win.ps1   啟動器：更新到自己的新版、編譯站啟動失敗時視窗留著
-bash tests/install_mac.sh                                         Mac 安裝程式與啟動器（在 Git Bash 用假的安裝包模擬）
+bash tests/install_mac.sh                                         Mac 安裝程式與啟動器（在 Git Bash 用假的安裝包模擬，含中途拔隨身碟）
 ```
 
 ## 範例

@@ -64,7 +64,7 @@ function Install-Babit {
   Say "安裝包：$pack"
   Say "安裝位置：$dest"
 
-  # 磁碟空間：第一次安裝約要 11 GB（裝完約 8.5 GB，安裝時另外暫放 1.9 GB 的 ESP32 壓縮檔），先檢查，免得裝到一半才失敗；
+  # 磁碟空間：第一次安裝約要 11 GB（裝完約 8.5 GB，安裝時另外暫放 1.9 GB 的 ESP32 壓縮檔；0.7 GB 的 emsdk 壓縮檔解完就刪），先檢查，免得裝到一半才失敗；
   # ESP32 核心已經裝好（重跑）就不檢查
   $need = if ($env:BABIT_NEED_GB) { [double]$env:BABIT_NEED_GB } else { 11 }
   if (-not (Test-Path (Join-Path $dest "tools\arduino\data\packages\esp32\hardware\esp32\3.3.11"))) {
@@ -74,6 +74,10 @@ function Install-Babit {
   }
   $tools = Join-Path $dest "tools"
   New-Item -ItemType Directory -Force $tools | Out-Null
+  # 工作位置換到安裝資料夾：從隨身碟按兩下時，視窗的工作位置在隨身碟上；學員照提示中途拔掉隨身碟後，
+  # 之後再開的程式（第一次編譯）會開不起來
+  Set-Location -LiteralPath $dest
+  [Environment]::CurrentDirectory = $dest
 
   # 3. 可攜版 git（GitHub Desktop 用的 dugite-native）→ tools\git
   $gitDir = Join-Path $tools "git"
@@ -140,31 +144,45 @@ function Install-Babit {
     New-Item -ItemType Directory -Force (Join-Path $ard "data") | Out-Null
     Set-Content -Path $libIdx -Encoding Ascii -Value '{"libraries":[]}'
   }
+  # 隨身碟比學員少：要用的壓縮檔先全部複製到電腦（staging），說可以拔了，再在電腦上解壓（解壓很慢，不該佔著隨身碟）
   $stage = Join-Path $ard "staging\packages"
-  if (-not (Test-Path (Join-Path $ard "data\packages\esp32\hardware\esp32\3.3.11"))) {
+  $needCore = -not (Test-Path (Join-Path $ard "data\packages\esp32\hardware\esp32\3.3.11"))
+  if ($needCore) {
     New-Item -ItemType Directory -Force (Join-Path $ard "data"), $stage | Out-Null
     Copy-Item (Join-Path $pack "package_index.json"), (Join-Path $pack "package_esp32_index.json") (Join-Path $ard "data") -Force
     Say "複製 ESP32 工具鏈（約 1.9 GB，隨身碟慢的話要幾分鐘）…"
     foreach ($sub in "esp32", "builtin") {
       Get-ChildItem (Join-Path $win $sub) -File | Where-Object { $_.Name -notmatch "checksums" } | Copy-Item -Destination $stage -Force
     }
-    Say "安裝 ESP32 核心 3.3.11（解壓縮，要幾分鐘，請不要關掉視窗）…"
-    Run "安裝 ESP32 核心失敗" { & $ac --config-file $cfg core install "esp32:esp32@3.3.11" }
   }
   if (-not (Get-ChildItem (Join-Path $ard "user\libraries") -Directory -Filter "Adafruit_NeoPixel*" -ErrorAction SilentlyContinue)) {
     Run "安裝 Adafruit NeoPixel 失敗" { & $ac --config-file $cfg lib install --zip-path (Join-Path $pack "libraries\Adafruit_NeoPixel-1.15.5.zip") }
   }
-
-  # 6. emsdk（網頁預覽的編譯器）：照 emsdk 的資料夾配置直接解開（等於 emsdk install＋activate），不必跑 emsdk.py。
-  #    .emscripten 在四個壓縮檔都解完後才寫，拿它當完成記號
+  # 6. emsdk（網頁預覽的編譯器）的四個壓縮檔也先複製過來
   $em = Join-Path $tools "emsdk"
-  if (-not (Test-Path (Join-Path $em ".emscripten"))) {
-    Say "安裝網頁預覽編譯器（emsdk 6.0.8，約 0.7 GB，要幾分鐘，請不要關掉視窗）…"
+  $emStage = Join-Path $ard "staging\emsdk"
+  $needEm = -not (Test-Path (Join-Path $em ".emscripten"))
+  if ($needEm) {
+    Say "複製網頁預覽編譯器（約 0.7 GB）…"
+    New-Item -ItemType Directory -Force $emStage | Out-Null
+    Copy-Item (Join-Path $pack "emsdk-6.0.8.zip"), (Join-Path $win "emsdk\python-3.13.3-0-win-amd64.zip"),
+      (Join-Path $win "emsdk\node-v24.19.0-win-x64.zip"), (Join-Path $win "emsdk\wasm-binaries.zip") $emStage -Force
+  }
+
+  # 隨身碟上的東西到這裡都複製完了，後面只用電腦上的檔案
+  Write-Host ""
+  Write-Host "  隨身碟用完了，可以拔下來給下一位同學（安裝還沒完成，這個視窗不要關）。" -ForegroundColor Green
+  Write-Host ""
+
+  #    照 emsdk 的資料夾配置直接解開（等於 emsdk install＋activate），不必跑 emsdk.py。
+  #    .emscripten 在四個壓縮檔都解完後才寫，拿它當完成記號；解完就刪掉複製來的壓縮檔（先解 emsdk 再裝核心，佔用空間的高峰比較低）
+  if ($needEm) {
+    Say "安裝網頁預覽編譯器（emsdk 6.0.8，要幾分鐘，請不要關掉視窗）…"
     Fresh $em
-    Unpack (Join-Path $pack "emsdk-6.0.8.zip") $em 1
-    Unpack (Join-Path $win "emsdk\python-3.13.3-0-win-amd64.zip") (Join-Path $em "python\3.13.3_64bit")
-    Unpack (Join-Path $win "emsdk\node-v24.19.0-win-x64.zip") (Join-Path $em "node\24.19.0_64bit") 1
-    Unpack (Join-Path $win "emsdk\wasm-binaries.zip") (Join-Path $em "upstream") 1
+    Unpack (Join-Path $emStage "emsdk-6.0.8.zip") $em 1
+    Unpack (Join-Path $emStage "python-3.13.3-0-win-amd64.zip") (Join-Path $em "python\3.13.3_64bit")
+    Unpack (Join-Path $emStage "node-v24.19.0-win-x64.zip") (Join-Path $em "node\24.19.0_64bit") 1
+    Unpack (Join-Path $emStage "wasm-binaries.zip") (Join-Path $em "upstream") 1
     Set-Content -Path (Join-Path $em ".emscripten") -Encoding Ascii -Value @(
       "NODE_JS = '`$CFGDIR/node/24.19.0_64bit/node.exe'",
       "PYTHON = '`$CFGDIR/python/3.13.3_64bit/python.exe'",
@@ -172,6 +190,11 @@ function Install-Babit {
       "BINARYEN_ROOT = '`$CFGDIR/upstream'",
       "EMSCRIPTEN_ROOT = '`$CFGDIR/upstream/emscripten'"
     )
+    Remove-Item -Recurse -Force $emStage
+  }
+  if ($needCore) {
+    Say "安裝 ESP32 核心 3.3.11（解壓縮，要幾分鐘，請不要關掉視窗）…"
+    Run "安裝 ESP32 核心失敗" { & $ac --config-file $cfg core install "esp32:esp32@3.3.11" }
   }
 
   # 7. 先編一次：emscripten 建系統函式庫、arduino-cli 編 ESP32 核心（也會補裝它需要的內建工具），

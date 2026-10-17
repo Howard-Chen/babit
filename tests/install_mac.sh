@@ -3,6 +3,7 @@
 # 安裝包是假的（小小的假壓縮檔，git 轉給開發機的 git），放在名稱有空格的資料夾（像隨身碟的「NO NAME」）：
 #   i5 隨身碟名稱有空格　c1 下載程式失敗後重跑　c2 git、emsdk 解壓到一半後重跑
 #   i6 M 系列 Mac 沒裝 Rosetta　i7 桌面上的 babit.command 是 symlink
+#   u4 壓縮檔複製到電腦就說「可以拔下來」、之後的程式不在隨身碟上跑　u5 Mac安裝.command 拔掉隨身碟後不再讀自己
 # 用法：bash tests/install_mac.sh（BABIT_TEST_DIR 改暫存位置）。用連接埠 8936。
 set -u
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,7 +23,7 @@ mkpack() {
   mkdir -p "$s/git/bin" "$s/git/libexec/git-core" "$s/git/share/git-core/templates" \
            "$s/py/python-3.13.3-0/bin" "$s/node/node-v24/bin" "$s/wasm/install/emscripten" "$s/wasm/install/bin" "$s/ac"
   printf '#!/bin/bash\nunset GIT_EXEC_PATH GIT_TEMPLATE_DIR\nexec "%s" "$@"\n' "$SYSGIT" > "$s/git/bin/git"
-  printf '#!/bin/bash\nexit 1\n' > "$s/py/python-3.13.3-0/bin/python3"
+  printf '#!/bin/bash\n[ -n "${BABIT_PWDLOG:-}" ] && pwd > "$BABIT_PWDLOG"\nexit 1\n' > "$s/py/python-3.13.3-0/bin/python3"   # u4：記下在哪個資料夾被執行
   printf '#!/bin/bash\nexit 1\n' > "$s/node/node-v24/bin/node"
   printf '# fake\n' > "$s/wasm/install/emscripten/emcc.py"
   printf '#!/bin/bash\nexit 0\n' > "$s/ac/arduino-cli"
@@ -87,6 +88,37 @@ printf '%s\n' 'require("fs").writeFileSync(__dirname + "/started.txt", "ok");' \
 (cd "$WORK/desk7" && MSYS=winsymlinks:lnk ln -sf "$R/babit.command" babit.command)
 BATOPIXEL_PORT=8936 BABIT_NO_BROWSER=1 bash "$WORK/desk7/babit.command" < /dev/null > "$WORK/i7.log" 2>&1
 [ -f "$R/station/started.txt" ]; check $? "I7 從桌面的 symlink 打開：找得到程式資料夾，編譯站有啟動"
+
+# U4：壓縮檔都複製到電腦後就說「可以拔下來」，之後才解壓、第一次編譯；之後開的程式不在隨身碟的資料夾裡跑
+#     （模擬從隨身碟按兩下：在安裝包資料夾裡開始跑；假的 python 在第一次編譯時記下自己在哪個資料夾）
+D="$WORK/u4"; fake_arduino_done "$D"
+out="$(cd "$PACK" && BABIT_PWDLOG="$WORK/u4-pwd.txt" BABIT_PACK="$PACK" BABIT_DEST="$D" BABIT_REPO="$HERE" run_install)"; echo "$out" > "$WORK/u4.log"
+echo "$out" | grep -E '複製網頁預覽編譯器|可以拔下來|安裝網頁預覽編譯器|第一次編譯' | tr '\n' '|' \
+  | grep -q '複製網頁預覽編譯器.*|.*可以拔下來.*|.*安裝網頁預覽編譯器.*|.*第一次編譯'
+check $? "U4 壓縮檔複製到電腦後就說「可以拔下來」，之後才解壓、第一次編譯"
+pwd4="$(cat "$WORK/u4-pwd.txt" 2>/dev/null)"
+[ -n "$pwd4" ] && case "$pwd4" in "$WORK/USB DISK"*) false ;; *) true ;; esac
+check $? "U4 第一次編譯的程式不在隨身碟的資料夾裡跑（${pwd4:-沒有記錄}）"
+
+# U5：從隨身碟按兩下 Mac安裝.command，安裝程式說「可以拔下來」後隨身碟就不見了：.command 不能再回去讀自己
+#     （模擬：檔案內容換成一堆會被執行到的行），安裝程式也不能在隨身碟的資料夾裡跑。安裝程式用假的
+S5="$WORK/u5stick/babit安裝包"; V5="$WORK/u5srv"; mkdir -p "$S5" "$V5"
+cp "$HERE/usb/Mac安裝.command" "$S5/"
+cat > "$V5/install.sh" <<'EOF'
+echo "  fake installer pwd=$(pwd)"
+echo "  隨身碟用完了，可以拔下來給下一位同學"
+for i in $(seq 1 300); do echo 'echo GARBAGE-LINE-EXECUTED'; done > "$BABIT_PACK/Mac安裝.command"
+echo "  完成！"
+EOF
+node "$HERE/tests/fake_raw.js" "$(cygpath -w "$V5")" 8936 & SRV=$!
+for i in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:8936/install.sh" && break; sleep 0.2; done
+out="$(cd "$S5" && BABIT_SCRIPT_URL="http://127.0.0.1:8936/install.sh" bash "$S5/Mac安裝.command" < /dev/null 2>&1)"; echo "$out" > "$WORK/u5.log"
+kill "$SRV" 2>/dev/null
+echo "$out" | grep -q "完成！" && ! echo "$out" | grep -q GARBAGE
+check $? "U5 隨身碟不見之後 .command 不再讀自己（沒有執行到換掉的內容）"
+pwd5="$(echo "$out" | sed -n 's/.*fake installer pwd=//p')"
+[ -n "$pwd5" ] && case "$pwd5" in "$WORK/u5stick"*) false ;; *) true ;; esac
+check $? "U5 安裝程式不在隨身碟的資料夾裡跑（${pwd5:-沒有記錄}）"
 
 if [ "$bad" = 0 ]; then echo; echo "全部通過 → PASS"; else echo; echo "$bad 項不符 → FAIL"; fi
 [ "$bad" = 0 ]
