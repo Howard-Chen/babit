@@ -1,22 +1,27 @@
-// 韌體編譯排隊的單元測試（不用開編譯站）：node station/test_fw_queue.js
-// 背景預編只留最新的一個在排隊；已經開始的、明確要求的（燒錄）都不作廢。
+// 編譯排隊的單元測試（不用開編譯站）：node station/test_fw_queue.js
+// 背景預編只留最新的一個：排隊中的直接作廢，正在編的也停掉（學員已經換了程式）。
+// 明確要求的（燒錄、縮圖）不作廢也不停；排隊中的燒錄要用正在編的那份結果時，那份也不停。
 const { createFwQueue } = require("./fw_queue");
 
 let bad = 0;
 const say = (ok, msg) => { if (!ok) bad++; console.log((ok ? "  ok   " : "  FAIL ") + msg); };
 const tick = () => new Promise((r) => setImmediate(r));
 const WAITING = "還在等";
+const now = (p) => Promise.race([p, tick().then(() => WAITING)]);
 
-// 假的 arduino-cli：記下開始的順序，測試放行才結束
+// 假的 arduino-cli：記下開始的順序，測試放行才結束；收到「停掉」就馬上回 superseded（跟真的編譯站一樣）
 function fakeCompiler() {
-  const started = [], gates = {};
-  const run = (code) => {
+  const started = [], stopped = [], gates = {};
+  const run = (code, signal) => {
     started.push(code);
-    return new Promise((resolve, reject) => { gates[code] = { resolve, reject }; });
+    return new Promise((resolve, reject) => {
+      gates[code] = { resolve, reject };
+      if (signal) signal.addEventListener("abort", () => { stopped.push(code); resolve({ ok: false, superseded: true, code }); });
+    });
   };
   const finish = (code) => gates[code] && gates[code].resolve({ ok: true, code });
   const fail = (code, e) => gates[code] && gates[code].reject(e);
-  return { run, started, finish, fail };
+  return { run, started, stopped, finish, fail };
 }
 
 // 等的編譯一直沒開始時，promise 永遠不會結束、node 直接收工——先當失敗，跑完才改成通過
@@ -39,41 +44,74 @@ process.on("exit", () => { if (!done) console.log("\n測試卡住：有一個編
     say((await b).code === "B", "B 的結果回給 B");
   }
 
-  console.log("── 背景預編：排隊中的被更新的取代");
+  console.log("── 背景預編：排隊中的作廢，正在編的也停掉");
   {
     const f = fakeCompiler(), q = createFwQueue(f.run);
     const a = q("A", true);                          // 馬上開始
-    const b = q("B", true);                          // 排隊中
-    const c = q("C", true);                          // 更新的背景預編 → B 作廢
-    const rb = await Promise.race([b, tick().then(() => WAITING)]);
-    say(rb !== WAITING && rb.superseded === true && rb.ok === false,
-      "B 馬上回 { ok:false, superseded:true }，不用等 A 編完（得到 " + JSON.stringify(rb) + "）");
-    const ra = await Promise.race([a, tick().then(() => WAITING)]);
-    say(ra === WAITING, "已經開始的 A 不作廢，照常編到完");
-    f.finish("A");
-    say((await a).code === "A", "A 編完照常回結果");
     await tick();
-    say(f.started.join() === "A,C", "B 不會真的去編：A 之後直接換 C（開始過：" + f.started.join() + "）");
+    const b = q("B", true);                          // 更新的背景預編 → 正在編的 A 停掉；B 排隊
+    const c = q("C", true);                          // 再更新的 → 排隊中的 B 作廢
+    const rb = await now(b);
+    say(rb !== WAITING && rb.superseded === true && rb.ok === false, "排隊中的 B 馬上回 { ok:false, superseded:true }（得到 " + JSON.stringify(rb) + "）");
+    const ra = await now(a);
+    say(ra !== WAITING && ra.superseded === true && f.stopped.join() === "A", "正在編的 A 收到「停掉」，回 superseded（得到 " + JSON.stringify(ra) + "）");
+    await tick();
+    say(f.started.join() === "A,C", "B 不會真的去編：A 停掉後直接換 C（開始過：" + f.started.join() + "）");
     f.finish("C");
     say((await c).code === "C", "C 的結果回給 C");
   }
 
-  console.log("── 明確要求（燒錄）不會被背景預編取代");
+  console.log("── 還沒開始就被停掉的：不會真的去編");
   {
     const f = fakeCompiler(), q = createFwQueue(f.run);
-    const a = q("A", true);                          // 正在編
-    const x = q("X", false);                         // 燒錄：排在 A 後面
+    const a = q("A", true);                          // 輪到它了，但 run 還沒呼叫
+    const b = q("B", true);                          // 同一個時間點就來了更新的
+    const ra = await a;
+    say(ra.superseded === true && !f.started.includes("A"), "A 回 superseded，沒有呼叫編譯（開始過：" + f.started.join() + "）");
+    await tick();
+    f.finish("B");
+    say((await b).code === "B", "接著編 B");
+  }
+
+  console.log("── 明確要求（燒錄）不會被背景預編作廢或停掉");
+  {
+    const f = fakeCompiler(), q = createFwQueue(f.run);
+    const x = q("X", false);                         // 燒錄：正在編
     const y = q("Y", true);                          // 背景預編
-    const z = q("Z", true);                          // 更新的背景預編 → Y 作廢，X 不受影響
-    const ry = await Promise.race([y, tick().then(() => WAITING)]);
+    const z = q("Z", true);                          // 更新的背景預編 → Y 作廢，X 照常
+    const ry = await now(y);
     say(ry !== WAITING && ry.superseded === true, "Y 被 Z 取代");
-    f.finish("A"); await a; await tick();
-    say(f.started.join() === "A,X", "A 之後編燒錄要的 X（開始過：" + f.started.join() + "）");
+    say((await now(x)) === WAITING && !f.stopped.length, "正在編的燒錄 X 不會被停掉");
     f.finish("X");
     say((await x).code === "X", "X 照常回結果");
     await tick();
-    say(f.started.join() === "A,X,Z", "最後編 Z，Y 沒有編（開始過：" + f.started.join() + "）");
+    say(f.started.join() === "X,Z", "X 之後編 Z，Y 沒有編（開始過：" + f.started.join() + "）");
     f.finish("Z"); await z;
+  }
+
+  console.log("── 排隊中的燒錄要同一段程式：正在編的背景預編不停（燒錄要用它的結果）");
+  {
+    const f = fakeCompiler(), q = createFwQueue(f.run);
+    const a = q("P", true);                          // 背景預編 P：正在編
+    const flash = q("P", false);                     // 按了燒錄，要的也是 P
+    const n = q("Q", true);                          // 學員又換了程式
+    say((await now(a)) === WAITING && !f.stopped.length, "P 繼續編，沒有被 Q 停掉");
+    f.finish("P");
+    say((await a).ok === true, "P 照常編完");
+    await tick();
+    say(f.started.join() === "P,P", "接著是燒錄要的 P（開始過：" + f.started.join() + "）");
+    f.finish("P"); await flash; await tick();
+    f.finish("Q"); await n;
+  }
+
+  console.log("── 新的背景預編跟正在編的是同一段程式：不停");
+  {
+    const f = fakeCompiler(), q = createFwQueue(f.run);
+    const a = q("P", true);
+    const b = q("P", true);
+    say((await now(a)) === WAITING && !f.stopped.length, "正在編的 P 不停");
+    f.finish("P"); await a; await tick();
+    f.finish("P"); await b;
   }
 
   console.log("── 編譯丟出例外：回 ok:false，後面的照常編");

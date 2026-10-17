@@ -80,6 +80,8 @@ station/
   toolpaths.js           找工具鏈：環境變數 → 安裝資料夾的 tools/ → 開發機的位置（Windows／Mac 的執行檔名稱與 PATH 不同）
   sketch_prep.js         學員程式的文字處理：編譯前檢查（中文說明）、預覽端補函式原型（Arduino 會自動做）
   catalog.js             範例庫規則：掃資料夾、分類、標題、id、範例名稱檢查
+  fw_queue.js            編譯排隊（預覽、韌體各一條）：一次一個；bg 請求只有最新的有用（排隊中的作廢、正在編的韌體停掉）
+  build_cleanup.js       編譯暫存：清掉舊版每編一次就留一份的建置資料夾；韌體編到一半被停掉時刪掉寫了一半的檔案
   thumb.js               把預覽模組跑成卡片縮圖（28 格 sprite，每格 0.1 秒）
   thumb_worker.js        縮圖在另一個執行緒跑，學員的程式卡住也拖不垮編譯站
   load_module.js         在 node 裡載入預覽模組（縮圖與測試共用）
@@ -110,8 +112,8 @@ bridge/                  ── Art-Net 橋（本地展示用，與編譯站分�
 | 方法 | 路徑 | 說明 |
 | --- | --- | --- |
 | GET | `/` | 工具頁 |
-| POST | `/compile/preview` | 學員的 .ino → 檢查格式 → 補函式原型 → emcc → `{ok, js, ms}` 或 `{ok:false, log}` |
-| POST | `/compile/firmware` | 學員的 .ino → arduino-cli → `{ok, key, ms, size}`；`GET /firmware/<key>` 取韌體。一次編一個；`?bg=1`＝工具頁的背景預編，排隊中的被更新的取代（回 `{ok:false, superseded:true}`），按燒錄不用等前面一長串 |
+| POST | `/compile/preview` | 學員的 .ino → 檢查格式 → 補函式原型 → emcc → `{ok, js, ms}` 或 `{ok:false, log}`。一次編一個；`?bg=1`＝工具頁按執行送的，排隊中的被更新的作廢（回 `{ok:false, superseded:true}`）；工具頁也會丟掉晚回來的舊結果，連點範例只跑最後一個 |
+| POST | `/compile/firmware` | 學員的 .ino → arduino-cli → `{ok, key, ms, size}`；`GET /firmware/<key>` 取韌體。一次編一個；`?bg=1`＝工具頁的背景預編：排隊中的作廢、正在編的也停掉（同一段程式、或排隊中的燒錄要用它時不停）；燒錄送的不帶 bg。固定在 `station/tmp/<連接埠>/fw/sketch` 編，arduino-cli 一直沿用同一個建置資料夾（147：每份約 18 秒，舊版約 35 秒） |
 | GET | `/examples?size=8` | 範例清單 `[{id, title, desc, category, mine, thumb}]`（依分類排好，「我的範例」在最後；`mine`＝學員自己的） |
 | GET | `/example?id=…` | 範例原始碼 |
 | PUT | `/example?id=…` | 存回學員自己的範例（內容＝程式；工具頁「💾 存回」、Ctrl+S）。只限「我的範例」，官方範例 403，PANEL 跟範例尺寸不符 400 |
@@ -134,14 +136,15 @@ bridge/                  ── Art-Net 橋（本地展示用，與編譯站分�
 node station/test_sketch_prep.js        學員程式前處理與格式檢查（不需編譯站）
 node station/test_catalog.js            範例庫規則（不需編譯站）
 node station/test_tools.js              找工具鏈：Windows 安裝、開發機、Mac、環境變數、找不到時的中文訊息（不需編譯站）
-node station/test_fw_queue.js           韌體編譯排隊：背景預編只留最新的一個、燒錄不會被取代（不需編譯站）
+node station/test_fw_queue.js           編譯排隊：bg 只留最新的（排隊中的作廢、正在編的停掉）、燒錄不會被取代（不需編譯站）
+node station/test_build_cleanup.js      編譯暫存：只清編譯站自己留下的、停掉時只刪寫了一半的、找建置資料夾（不需編譯站）
 powershell -ExecutionPolicy Bypass -File preview/build_wasm.ps1
 node preview/test_node.js               繪圖數值
 node preview/test_audio.js              聲音頻段與旋鈕倍率
 （以下需要編譯站）
 node preview/test_arduino.js            Arduino 相容層的數值語意
 node preview/test_inputs.js             旋鈕、按鈕、亮度、麥克風靈敏度（兩端編譯、預覽逐格驗證）
-node station/test_compile.js            格式錯誤與 delay() 的中文訊息、行號、預覽卡住保護、提醒（兩端編譯）、背景預編被取代
+node station/test_compile.js            格式錯誤與 delay() 的中文訊息、行號、預覽卡住保護、提醒（兩端編譯）、背景預編被停掉、固定建置資料夾
 node station/test_examples_api.js       範例庫、新增範例、縮圖
 node station/test_ai_guide.js           AGENTS.md 的程式兩端都編得過、跑起來沒有提醒
 node station/test_debug.js              除錯模式的感應器檢查程式：拿得到、兩端編得過、預覽印出各項數值

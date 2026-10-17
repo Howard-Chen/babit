@@ -2,8 +2,9 @@
 // GET  /                  → 工具頁 app.html
 // GET  /vendor/*          → 本地資產（esptool-js bundle）
 // POST /compile/preview   → 學員的 .ino → 補函式原型 → emcc → {ok, js, ms}
+//                           ?bg=1＝工具頁按執行送的：排隊中的被更新的作廢，回 {ok:false, superseded:true}（fw_queue.js）
 // POST /compile/firmware  → 學員的 .ino → arduino-cli → merged.bin 裁掉 0xFF padding → {ok, key, ms, size}
-//                           ?bg=1＝工具頁的背景預編：排隊中的被更新的取代，回 {ok:false, superseded:true}（fw_queue.js）
+//                           ?bg=1＝工具頁的背景預編：排隊中的作廢、正在編的也停掉（fw_queue.js）
 // GET  /firmware/<key>    → 韌體二進位（快取）
 // GET  /examples?size=8   → 範例清單 [{id, title, desc, category, mine, thumb}]（規則見 catalog.js；mine＝在「我的範例」裡）
 // GET  /example?id=…      → 範例原始碼
@@ -25,6 +26,7 @@ const { normalize, prepareSketch, checkSketch, panelOf } = require("./sketch_pre
 const { SIZE_DIRS, MY_DIR, exampleId, listExamples, resolveExample, validName } = require("./catalog.js");
 const { resolveTools } = require("./toolpaths.js");
 const { createFwQueue } = require("./fw_queue.js");
+const { cleanStaleBuilds, buildCacheDirs, pruneSince, findBuildDir } = require("./build_cleanup.js");
 
 const ROOT = __dirname;
 const FW = path.join(ROOT, "..", "firmware", "BatoPixelS0");
@@ -57,12 +59,22 @@ const FQBN = process.env.BATOPIXEL_FQBN || "esp32:esp32:esp32s3:CDCOnBoot=cdc";
 const PORT = Number(process.env.BATOPIXEL_PORT) || 8930;
 // 暫存資料夾依連接埠分開：同一個資料夾開兩個編譯站時，啟動清暫存才不會刪到對方正在編譯的檔案
 const TMP = path.join(ROOT, "tmp", String(PORT));
+const FWDIR = path.join(TMP, "fw");
+// 韌體編到一半的記號（內容＝開始編的時間）：編譯站在編譯中被關掉，下次啟動時補刪那次寫了一半的建置檔案（見 compileFirmware）
+const FW_MARK = path.join(ROOT, "tmp", PORT + ".fw-compiling");
+const BUILD_CACHES = buildCacheDirs({ tools: path.join(ROOT, "..", "tools") });
+try {
+  const since = Number(fs.readFileSync(FW_MARK, "utf8"));
+  const d = since && findBuildDir(BUILD_CACHES, path.join(FWDIR, "sketch"));
+  if (d) pruneSince(d, since - 2000);
+  fs.rmSync(FW_MARK, { force: true });
+} catch (_) {}
 
 fs.rmSync(TMP, { recursive: true, force: true });
 fs.mkdirSync(TMP, { recursive: true });
 
 let seq = 0;
-let previewQueue = Promise.resolve();   // 預覽與韌體各自排隊，韌體慢不擋預覽
+// 預覽與韌體各自排隊（韌體慢不擋預覽），規則見 fw_queue.js
 const enqueueFirmware = createFwQueue(compileFirmware);
 const fwCache = new Map();              // sha1(學員程式＋函式庫) → { bin }
 const FW_CACHE_MAX = 6;
@@ -120,12 +132,10 @@ function compilePreview(code) {
   });
 }
 
-// 預覽編譯排隊（一次只跑一個 emcc）；之後縮圖產生也走這裡
-function queuePreview(code) {
-  const p = previewQueue.then(() => compilePreview(code));
-  previewQueue = p.catch(() => {});
-  return p;
-}
+// 預覽編譯排隊（一次只跑一個 emcc），縮圖產生也走這裡。工具頁按執行送的（bg）只有最新的有用：排隊中的作廢；
+// 正在編的照常編完（一份才一兩秒，中途停掉 emcc 可能留下它快取的鎖）。縮圖的照順序編、不作廢
+const enqueuePreview = createFwQueue(compilePreview);
+const queuePreview = (code) => enqueuePreview(code, false);
 
 // 快取鍵必須包含函式庫，不能只用學員程式：
 // 否則改了 BatoPixel.h（例如色序、腳位）後燒同一段程式，會拿到改之前的舊韌體。
@@ -133,27 +143,45 @@ function librarySignature() {
   try { return fs.readFileSync(path.join(FW, "BatoPixel.h"), "utf8"); } catch (_) { return ""; }
 }
 
-// 韌體：學員的 .ino 原封不動交給 arduino-cli（它自己會補函式原型），旁邊放一份函式庫
-function compileFirmware(code) {
+// 韌體：學員的 .ino 原封不動交給 arduino-cli（它自己會補函式原型），旁邊放一份函式庫。
+// 固定放在 station/tmp/<連接埠>/fw/sketch 編：arduino-cli 看 sketch 的位置決定建置資料夾，位置固定就一直用同一個（重開編譯站也一樣）——
+// 沿用上次的結果（147：第一次 35 秒、之後約 18 秒），也不會每編一次就在它的快取多一份（舊版每次一份約 18 MB，見 build_cleanup.js）。
+// 不用 --build-path：自訂建置資料夾時 arduino-cli 第一次會連 ESP32 核心一起重編（147 上 80 秒）。
+// signal 中止（學員已經換了程式，見 fw_queue.js）就停掉整個 arduino-cli 連同它開的編譯器，再刪掉這次寫進建置資料夾的檔案
+// （可能只寫了一半；留著的話下次會被當成編好的、連結失敗），之前編好的留著。編到一半編譯站被關掉的，下次啟動時補刪（FW_MARK）。
+// 也不用 --clean：它連 ESP32 核心的快取都不用。
+const FW_SKETCH = path.join(FWDIR, "sketch");            // arduino-cli 規定：資料夾名稱＝.ino 檔名
+const pruneFwBuild = (since) => { const d = findBuildDir(BUILD_CACHES, FW_SKETCH); if (d) pruneSince(d, since - 2000); };   // 2 秒：檔案時間的精度
+function compileFirmware(code, signal) {
   return new Promise((resolve) => {
     // 快取鍵＝學員程式＋函式庫：任一改變都要重編，否則會燒到舊韌體
     const key = sha1(code + "\0" + librarySignature());
     const hit = fwCache.get(key);
     if (hit) { resolve({ ok: true, key, ms: 0, cached: true, size: hit.bin.length }); return; }
-    const dir = path.join(TMP, "fw" + (++seq));
-    const sk = path.join(dir, "sketch");               // arduino-cli 規定：資料夾名稱＝.ino 檔名
-    fs.mkdirSync(sk, { recursive: true });
-    fs.writeFileSync(path.join(sk, "sketch.ino"), code, "utf8");
-    fs.copyFileSync(path.join(FW, "BatoPixel.h"), path.join(sk, "BatoPixel.h"));
-    const out = path.join(dir, "out");
+    if (signal && signal.aborted) { resolve({ ok: false, superseded: true }); return; }
+    const out = path.join(FWDIR, "out");
+    fs.mkdirSync(FW_SKETCH, { recursive: true });
+    fs.rmSync(out, { recursive: true, force: true });  // 這次編失敗時，不能讀到上一次的 merged.bin
+    fs.writeFileSync(path.join(FW_SKETCH, "sketch.ino"), code, "utf8");
+    fs.copyFileSync(path.join(FW, "BatoPixel.h"), path.join(FW_SKETCH, "BatoPixel.h"));
+    const args = TOOLS.cliArgs.concat(["compile", "--no-color", "--fqbn", FQBN, "--output-dir", out, FW_SKETCH]);
     const t0 = Date.now();
-    execFile(
-      CLI, TOOLS.cliArgs.concat(["compile", "--no-color", "--fqbn", FQBN, "--output-dir", out, sk]),
-      { timeout: 180000, maxBuffer: 32 * 1024 * 1024, env: CLI_ENV },
+    fs.writeFileSync(FW_MARK, String(t0));
+    let stopped = false;
+    const stop = () => { stopped = true; killTree(child.pid); };
+    const child = execFile(
+      CLI, args,
+      // Mac：自成一個程式群組，停的時候整群一起停
+      { timeout: 180000, maxBuffer: 32 * 1024 * 1024, env: CLI_ENV, detached: process.platform !== "win32" },
       (err, stdout, stderr) => {
+        if (signal) signal.removeEventListener("abort", stop);
+        if (stopped || (err && err.killed)) pruneFwBuild(t0);   // 停掉或逾時
+        fs.rmSync(FW_MARK, { force: true });
         let res;
-        if (err) {
-          res = { ok: false, log: cleanLog((stderr || "") + "\n" + (stdout || ""), [sk]) };
+        if (stopped) {
+          res = { ok: false, superseded: true };
+        } else if (err) {
+          res = { ok: false, log: cleanLog((stderr || "") + "\n" + (stdout || ""), [FW_SKETCH]) };
         } else {
           const merged = path.join(out, "sketch.ino.merged.bin");
           if (!fs.existsSync(merged)) {
@@ -165,11 +193,18 @@ function compileFirmware(code) {
             res = { ok: true, key, ms: Date.now() - t0, size: bin.length };
           }
         }
-        fs.rmSync(dir, { recursive: true, force: true });
         resolve(res);
       }
     );
+    if (signal) signal.addEventListener("abort", stop, { once: true });
   });
+}
+
+// 停掉一個程式和它開的所有子程式（arduino-cli 會再開好幾個編譯器）
+function killTree(pid) {
+  if (!pid) return;
+  if (process.platform === "win32") execFile("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }, () => {});
+  else { try { process.kill(-pid, "SIGKILL"); } catch (_) { try { process.kill(pid, "SIGKILL"); } catch (_) {} } }
 }
 
 function readBody(req, cb) {
@@ -392,9 +427,7 @@ const server = http.createServer((req, res) => {
     readBody(req, (code) => {
       const bad = checkSketch(code);
       if (bad) { json(res, { ok: false, log: "error: " + bad }); return; }
-      queuePreview(code)
-        .then((r) => json(res, r))
-        .catch((e) => json(res, { ok: false, log: String(e) }, 500));
+      enqueuePreview(code, u.searchParams.get("bg") === "1").then((r) => json(res, r));
     });
     return;
   }
@@ -413,4 +446,8 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`Babit 編譯站 → http://localhost:${PORT}`);
   console.log(`  工具：emsdk ${EMSDK}；arduino-cli ${CLI}${TOOLS.cliArgs.length ? "（" + TOOLS.cliArgs[1] + "）" : ""}`);
+  // 背景清掉舊版每編一次就留一份的編譯暫存（build_cleanup.js），不擋編譯站
+  cleanStaleBuilds(BUILD_CACHES).then(({ n, bytes }) => {
+    if (n) console.log(`  清掉 ${n} 份舊的編譯暫存（${Math.round(bytes / 1048576)} MB）`);
+  });
 });

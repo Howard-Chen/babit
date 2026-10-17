@@ -23,8 +23,11 @@ const OKBODY = "void setup() {\n  begin();\n}\n\nvoid loop() {\n  dot(0, 0, RED)
   });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  const fwReqs = [];                 // 頁面送出的韌體編譯請求（背景預編要帶 bg=1，燒錄不帶）
-  page.on("request", (r) => { if (r.url().includes("/compile/firmware")) fwReqs.push(r.url()); });
+  const fwReqs = [], prevReqs = [];  // 頁面送出的韌體／預覽編譯請求（背景預編、按執行的預覽要帶 bg=1，燒錄不帶）
+  page.on("request", (r) => {
+    if (r.url().includes("/compile/firmware")) fwReqs.push(r.url());
+    if (r.url().includes("/compile/preview")) prevReqs.push(r.url());
+  });
   const status = () => page.$eval("#status", (el) => el.textContent);
   const text = (sel) => page.$eval(sel, (el) => el.textContent);
   const visible = (sel) => page.$eval(sel, (el) => !el.hidden && el.offsetParent !== null);
@@ -271,6 +274,16 @@ const OKBODY = "void setup() {\n  begin();\n}\n\nvoid loop() {\n  dot(0, 0, RED)
     await page.click("#flash");
     for (let i = 0; i < 50 && fwReqs.length === sent; i++) await new Promise((r) => setTimeout(r, 100));
     say(fwReqs.length > sent && !fwReqs[sent].includes("bg="), "按燒錄送的韌體編譯不帶 bg：" + (fwReqs[sent] || "沒有送出").replace(STATION, ""));
+
+    // 12b. 連點三個範例：只跑最後一個（預覽跑的就是編輯區那段程式，前面的結果回來也不會蓋過去）；按執行送的預覽帶 bg=1
+    await page.$eval("#status", (el) => { el.textContent = ""; });
+    for (const t of ["彩虹流動", "按鈕切換模式", "英文跑馬燈"])
+      await page.evaluate((n) => [...document.querySelectorAll(".card")].find((c) => c.querySelector(".cname").textContent === n).click(), t);
+    const settled = await page.waitForFunction(() => window.__bp && window.__bp.code === document.getElementById("code").value &&
+      /執行中/.test(document.getElementById("status").textContent), { timeout: 30000 }).then(() => true, () => false);
+    say(settled && (await editor()).includes("英文跑馬燈"), "連點三個範例：預覽跑的是最後一個（編輯區那段）");
+    const allBgPreview = prevReqs.every((u) => u.endsWith("?bg=1"));
+    say(prevReqs.length > 0 && allBgPreview, `按執行送的預覽都帶 bg=1（${prevReqs.length} 次）` + (allBgPreview ? "" : "：" + prevReqs.find((u) => !u.endsWith("?bg=1")).replace(STATION, "")));
 
     // ── 第二部分（Task 8）插在這一行上面 ──
 

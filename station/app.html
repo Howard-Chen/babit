@@ -546,19 +546,25 @@ function precompileFirmware(code, bg = true) {
   return fw.pending;
 }
 
+// 每按一次執行（或載入範例）編號加一：連點範例時只有最後一次有用——前面的結果晚回來就丟掉，
+// 預覽請求帶 bg=1，編譯站也會把排隊中的舊請求作廢
+let runSeq = 0;
 async function run() {
+  const seq = ++runSeq, code = codeEl.value;
   runBtn.disabled = true;
   hideLog();
   statusEl.textContent = "編譯中…";
   const tStart = performance.now();
   try {
-    const r = await fetch("/compile/preview", {
+    const r = await fetch("/compile/preview?bg=1", {
       method: "POST",
       headers: { "Content-Type": "text/plain; charset=utf-8" },
-      body: codeEl.value,
+      body: code,
     });
     const j = await r.json();
+    if (seq !== runSeq) return;
     const ms = Math.round(performance.now() - tStart);
+    if (j.superseded) { statusEl.textContent = "預覽被另一個分頁的編譯取代了，再按一次 ▶ 執行"; return; }
     if (!j.ok) {
       warnEl.hidden = true;
       showCompileError(j.log || "（沒有錯誤訊息）");
@@ -567,7 +573,9 @@ async function run() {
     }
     const factory = new Function(j.js + ";return createBatoPixel;")();
     const mod = await factory({ print: previewPrint, printErr: previewPrint });   // 程式的 Serial 輸出（除錯模式顯示在文字視窗）
+    if (seq !== runSeq) return;
     state.mod = mod;
+    state.code = code;                       // 預覽正在跑的是哪一段程式（測試用來確認連點時只跑最後一個）
     state.ptr = mod._bp_framebuffer();
     state.n = mod._bp_width();
     state.target = mod._bp_fps();
@@ -579,11 +587,11 @@ async function run() {
     renderWarn();
     if (au.ac) mod._bp_audio_set_rate(TARGET_RATE);   // 重編後要重設取樣率
     statusEl.textContent = `✓ 執行中（往返 ${ms}ms）`;
-    precompileFirmware(codeEl.value);
+    precompileFirmware(code);
   } catch (e) {
-    statusEl.textContent = "連線失敗——編譯站（run_station.ps1）有開嗎？";
+    if (seq === runSeq) statusEl.textContent = "連線失敗——編譯站（run_station.ps1）有開嗎？";
   } finally {
-    runBtn.disabled = false;
+    if (seq === runSeq) runBtn.disabled = false;
   }
 }
 
