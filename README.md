@@ -112,8 +112,10 @@ bridge/                  ── Art-Net 橋（本地展示用，與編譯站分�
 | GET | `/` | 工具頁 |
 | POST | `/compile/preview` | 學員的 .ino → 檢查格式 → 補函式原型 → emcc → `{ok, js, ms}` 或 `{ok:false, log}` |
 | POST | `/compile/firmware` | 學員的 .ino → arduino-cli → `{ok, key, ms, size}`；`GET /firmware/<key>` 取韌體。一次編一個；`?bg=1`＝工具頁的背景預編，排隊中的被更新的取代（回 `{ok:false, superseded:true}`），按燒錄不用等前面一長串 |
-| GET | `/examples?size=8` | 範例清單 `[{id, title, desc, category, thumb}]`（依分類排好，「我的範例」在最後） |
+| GET | `/examples?size=8` | 範例清單 `[{id, title, desc, category, mine, thumb}]`（依分類排好，「我的範例」在最後；`mine`＝學員自己的） |
 | GET | `/example?id=…` | 範例原始碼 |
+| PUT | `/example?id=…` | 存回學員自己的範例（內容＝程式；工具頁「💾 存回」、Ctrl+S）。只限「我的範例」，官方範例 403，PANEL 跟範例尺寸不符 400 |
+| DELETE | `/example?id=…` | 刪除學員自己的範例（工具頁「🗑 刪除」，先問、程式留在編輯區）。只限「我的範例」 |
 | GET | `/thumb?id=…` | 縮圖 PNG（官方範例用旁邊的 .png；其他的由編譯站產生、快取在 `station/cache/`） |
 | POST | `/examples` | 新增範例 `{size, name, code, overwrite?}` → 存到 `examples/<尺寸>/我的範例/<name>.ino` |
 | GET | `/ai-guide` | AGENTS.md 的內容 |

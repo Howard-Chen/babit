@@ -136,6 +136,9 @@
   /* 標題列：右邊放「複製給 AI 的說明」；範例標題列：右邊放「＋ 新增範例」 */
   .top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .gtitle { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  /* 選到「我的範例」的卡片時多出「🗑 刪除」，程式改過再多「💾 存回」（官方範例沒有這兩顆） */
+  .gbtns { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; }
+  .gbtns [hidden] { display:none; }
   /* 新增範例：平常收起來，按「＋ 新增範例」才展開（沿用原本硬體設定面板的樣子） */
   #addex.on { --face:var(--lit); --kl:var(--lit-line); --ke:var(--lit-edge); }
   #addpanel { border:1px solid var(--line); border-radius:8px; padding:14px 16px;
@@ -190,7 +193,7 @@
     <button id="copylog" class="mini" type="button">📋 複製錯誤訊息（貼給 AI）</button>
   </div>
   <div class="gallery" id="gallery" hidden>
-    <div class="gtitle"><span>範例（點一下載入並執行）</span><button id="addex" class="mini" type="button">＋ 新增範例</button></div>
+    <div class="gtitle"><span>範例（點一下載入並執行）</span><span class="gbtns"><button id="exupdate" class="mini" type="button" hidden title="把編輯區的程式存回這個範例（Ctrl+S）">💾 存回</button><button id="exdelete" class="mini" type="button" hidden title="刪除這個範例（程式會留在編輯區）">🗑 刪除</button><button id="addex" class="mini" type="button">＋ 新增範例</button></span></div>
     <div class="cards" id="cards"></div>
   </div>
 </div>
@@ -763,6 +766,19 @@ let currentId = null;       // 目前載入的範例（卡片亮燈）
 
 const isDirty = () => codeEl.value.trim() !== "" && codeEl.value !== loadedCode;
 
+// 目前載入的範例是不是學員自己的（「我的範例」）：是的話才有「🗑 刪除」，程式改過才有「💾 存回」
+const exUpdateBtn = document.getElementById("exupdate"), exDeleteBtn = document.getElementById("exdelete");
+const currentExample = () => galleryList.find((e) => e.id === currentId) || null;
+function renderExButtons() {
+  const ex = currentExample(), mine = !!(ex && ex.mine);
+  exDeleteBtn.hidden = !mine;
+  exUpdateBtn.hidden = !(mine && isDirty());
+  if (mine) {
+    exUpdateBtn.textContent = `💾 存回「${ex.title}」`;
+    exDeleteBtn.textContent = `🗑 刪除「${ex.title}」`;
+  }
+}
+
 async function loadGallery() {
   try { galleryList = await (await fetch("/examples?size=" + size)).json(); } catch (_) { galleryList = []; }
   if (!Array.isArray(galleryList)) galleryList = [];
@@ -772,6 +788,7 @@ async function loadGallery() {
 function renderGallery() {
   cardsEl.innerHTML = "";
   galleryEl.hidden = false;
+  renderExButtons();
   if (!galleryList.length) {
     const p = document.createElement("div");
     p.className = "gempty";
@@ -829,6 +846,7 @@ function setCode(code, id) {
   loadedCode = codeEl.value;   // 用編輯區讀回來的內容比對：textarea 會把 CRLF 換成 LF（學員電腦用 git 取出的範例是 CRLF）
   currentId = id;
   for (const c of cardsEl.querySelectorAll(".card")) c.classList.toggle("on", c.dataset.id === id);
+  renderExButtons();
 }
 
 async function pickExample(ex, force = false) {
@@ -909,6 +927,46 @@ addBtn.addEventListener("click", () => toggleAddPanel(addPanel.hidden));
 document.getElementById("exsave").addEventListener("click", () => saveExample());
 document.getElementById("excancel").addEventListener("click", () => toggleAddPanel(false));
 exName.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveExample(); } });
+
+// ── 改自己的範例：存回（覆蓋同一個檔）、刪除（先問；程式留在編輯區）。官方範例不能改，要改就另存成自己的 ──
+async function updateExample() {
+  const ex = currentExample();
+  if (!ex || !ex.mine) return;
+  let r, j;
+  try {
+    r = await fetch("/example?id=" + encodeURIComponent(ex.id),
+      { method: "PUT", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: codeEl.value });
+    j = await r.json();
+  } catch (e) { statusEl.textContent = "存回失敗：" + e.message; return; }
+  if (!j.ok) { statusEl.textContent = "存回失敗：" + (j.error || r.status); return; }
+  loadedCode = codeEl.value;
+  await loadGallery();                       // 卡片縮圖換成新程式的
+  statusEl.textContent = `✓ 已存回「${ex.title}」`;
+}
+async function deleteExample() {
+  const ex = currentExample();
+  if (!ex || !ex.mine) return;
+  if (!confirm(`要刪除「${ex.title}」嗎？刪掉就找不回來（程式會留在編輯區）。`)) return;
+  let r, j;
+  try { r = await fetch("/example?id=" + encodeURIComponent(ex.id), { method: "DELETE" }); j = await r.json(); }
+  catch (e) { statusEl.textContent = "刪除失敗：" + e.message; return; }
+  if (!j.ok) { statusEl.textContent = "刪除失敗：" + (j.error || r.status); return; }
+  currentId = null;
+  loadedCode = "";                           // 編輯區的程式不再對應任何範例：換範例時會先問，不會悄悄不見
+  await loadGallery();
+  statusEl.textContent = `✓ 已刪除「${ex.title}」（程式還在編輯區，要的話按「＋ 新增範例」再存）`;
+}
+exUpdateBtn.addEventListener("click", updateExample);
+exDeleteBtn.addEventListener("click", deleteExample);
+codeEl.addEventListener("input", renderExButtons);
+// Ctrl+S（Mac：⌘+S）：自己的範例就存回；其他（官方範例、貼上的程式）打開「＋ 新增範例」
+document.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "s") return;
+  e.preventDefault();
+  const ex = currentExample();
+  if (ex && ex.mine) { if (isDirty()) updateExample(); }
+  else toggleAddPanel(true);
+});
 
 // ── 複製給 AI 的說明（AGENTS.md）：學員貼到自己的 AI 對話框，AI 就知道程式要怎麼寫 ──
 document.getElementById("aiguide").addEventListener("click", async () => {

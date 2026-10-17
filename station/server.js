@@ -5,8 +5,9 @@
 // POST /compile/firmware  → 學員的 .ino → arduino-cli → merged.bin 裁掉 0xFF padding → {ok, key, ms, size}
 //                           ?bg=1＝工具頁的背景預編：排隊中的被更新的取代，回 {ok:false, superseded:true}（fw_queue.js）
 // GET  /firmware/<key>    → 韌體二進位（快取）
-// GET  /examples?size=8   → 範例清單 [{id, title, desc, category, thumb}]（規則見 catalog.js）
+// GET  /examples?size=8   → 範例清單 [{id, title, desc, category, mine, thumb}]（規則見 catalog.js；mine＝在「我的範例」裡）
 // GET  /example?id=…      → 範例原始碼
+// PUT  /example?id=…      → 存回自己的範例（內容＝程式）；DELETE /example?id=… → 刪除。只限「我的範例」，官方範例回 403
 // GET  /thumb?id=…        → 範例縮圖 PNG
 // POST /examples          → 新增範例 {size, name, code, overwrite?} → 存到 examples/<尺寸>/我的範例/<name>.ino
 // GET  /ai-guide          → 給 AI 的說明書（repo 根目錄的 AGENTS.md），工具頁「複製給 AI 的說明」用
@@ -265,12 +266,41 @@ function saveExample(body) {
   return { status: 200, ok: true, id: exampleId(EXAMPLES, file) };
 }
 
+// ── 改自己的範例（工具頁「💾 存回」「🗑 刪除」）：只能動「我的範例」裡的，官方範例不會被改到 ──
+// 用解析後的實際路徑判斷（8x8/我的範例/../1_基本/… 這種 id 會繞到官方範例）
+function myExample(id) {
+  const f = resolveExample(EXAMPLES, id);
+  if (!f) return { status: 404, error: "找不到這個範例" };
+  const rel = path.relative(EXAMPLES, f).split(path.sep);       // [尺寸資料夾, 我的範例, …, 檔名]
+  if (rel.length < 3 || rel[1] !== MY_DIR) return { status: 403, error: "官方範例不能改也不能刪；要改請按「＋ 新增範例」存成自己的範例" };
+  const size = Number(Object.keys(SIZE_DIRS).find((k) => SIZE_DIRS[k] === rel[0]));
+  return { file: f, size };
+}
+
+function updateExample(id, code) {
+  const m = myExample(id);
+  if (m.error) return { status: m.status, ok: false, error: m.error };
+  if (!code.trim()) return { status: 400, ok: false, error: "編輯區是空的，沒有程式可以存" };
+  const p = panelOf(code);
+  if (p == null) return { status: 400, ok: false, error: `程式最前面要寫 #define PANEL ${m.size}，才知道是哪一種燈板的範例` };
+  if (p !== m.size) return { status: 400, ok: false, error: `這段程式是 ${p}×${p} 燈板的（#define PANEL ${p}），不能存回 ${m.size}×${m.size} 的範例；要存請切換到 ${p}×${p} 再按「＋ 新增範例」` };
+  fs.writeFileSync(m.file, normalize(code), "utf8");
+  return { status: 200, ok: true, id };
+}
+
+function deleteExample(id) {
+  const m = myExample(id);
+  if (m.error) return { status: m.status, ok: false, error: m.error };
+  fs.unlinkSync(m.file);
+  return { status: 200, ok: true };
+}
+
 function serveExamples(req, res, url, query) {
   if (url === "/examples") {
     const size = Number(query.get("size"));
     if (!SIZE_DIRS[size]) { json(res, { ok: false, error: "size 只能是 8 或 16" }, 400); return true; }
     json(res, listExamples(EXAMPLES, size).map((e) => ({
-      id: e.id, title: e.title, desc: e.desc, category: e.category,
+      id: e.id, title: e.title, desc: e.desc, category: e.category, mine: e.mine,
       thumb: "/thumb?id=" + encodeURIComponent(e.id),
     })));
     return true;
@@ -335,6 +365,18 @@ const server = http.createServer((req, res) => {
     if (!hit) { json(res, { ok: false, log: "韌體快取不存在，請重新編譯" }, 404); return; }
     res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Length": hit.bin.length });
     res.end(hit.bin);
+    return;
+  }
+  if ((req.method === "PUT" || req.method === "DELETE") && url === "/example") {
+    const id = u.searchParams.get("id");
+    const reply = (fn) => {
+      let r;
+      try { r = fn(); } catch (e) { r = { status: 500, ok: false, error: (req.method === "PUT" ? "存回" : "刪除") + "失敗：" + e.message }; }
+      const { status, ...rest } = r;
+      json(res, rest, status);
+    };
+    if (req.method === "PUT") readBody(req, (code) => reply(() => updateExample(id, code)));
+    else reply(() => deleteExample(id));
     return;
   }
   if (req.method === "POST" && url === "/examples") {

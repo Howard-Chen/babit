@@ -156,6 +156,49 @@ const OKBODY = "void setup() {\n  begin();\n}\n\nvoid loop() {\n  dot(0, 0, RED)
       fs.rmSync(crlfFile, { force: true });
     }
 
+    // 9c. 改自己的範例：選到「我的範例」的卡片才有「🗑 刪除」，程式改過才有「💾 存回」；官方範例都沒有
+    const MINE = "測試_存回";
+    const mineFile = path.join(__dirname, "..", "examples", "8x8", "我的範例", MINE + ".ino");
+    const editCode = (from, to) => page.$eval("#code", (el, a, b) => {
+      el.value = el.value.replace(a, b);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }, from, to);
+    try {
+      fs.mkdirSync(path.dirname(mineFile), { recursive: true });
+      fs.writeFileSync(mineFile, prog(8, OKBODY));
+      await page.reload({ waitUntil: "load" });
+      await page.waitForFunction((n) => [...document.querySelectorAll(".card .cname")].some((e) => e.textContent === n) &&
+        /執行中/.test(document.getElementById("status").textContent), { timeout: 30000 }, MINE);
+      await clickCard("彩虹流動");
+      await editCode("255, 255", "255, 200");
+      say(!(await visible("#exupdate")) && !(await visible("#exdelete")), "官方範例（改過也一樣）：沒有「存回」「刪除」");
+      dialogs.length = 0;
+      await clickCard(MINE);
+      say(await visible("#exdelete") && !(await visible("#exupdate")), "選到自己的範例：有「刪除」，還沒改所以沒有「存回」");
+      await editCode("RED", "BLUE");
+      say(await visible("#exupdate") && (await text("#exupdate")).includes(MINE), "改了程式：出現「" + (await text("#exupdate")) + "」");
+      await page.$eval("#status", (el) => { el.textContent = ""; });
+      await page.click("#exupdate");
+      await waitStatus(/已存回/, 10000);
+      say(fs.readFileSync(mineFile, "utf8").includes("BLUE") && !(await visible("#exupdate")), "按「存回」：檔案換成新程式，按鈕收起來");
+      await editCode("BLUE", "GREEN");
+      await page.$eval("#status", (el) => { el.textContent = ""; });
+      await page.keyboard.down("Control"); await page.keyboard.press("s"); await page.keyboard.up("Control");
+      await waitStatus(/已存回/, 10000);
+      say(fs.readFileSync(mineFile, "utf8").includes("GREEN"), "Ctrl+S 也會存回");
+      dialogs.length = 0;
+      await page.click("#exdelete");
+      await page.waitForFunction((n) => ![...document.querySelectorAll(".card .cname")].some((e) => e.textContent === n), { timeout: 10000 }, MINE);
+      say(dialogs.length === 1 && dialogs[0].includes(MINE) && !fs.existsSync(mineFile),
+          "按「刪除」先問（" + (dialogs[0] || "沒有問") + "），確定後檔案與卡片都不見");
+      say((await editor()).includes("GREEN") && !(await visible("#exdelete")), "刪掉後程式還留在編輯區，刪除鈕收起來");
+      dialogs.length = 0;
+      await clickCard("彩虹流動");
+      say(dialogs.length === 1, "刪掉後換範例會先問，編輯區的程式不會悄悄不見");
+    } finally {
+      fs.rmSync(mineFile, { force: true });
+    }
+
     // 10. 複製給 AI 的說明（AGENTS.md）
     await page.click("#aiguide");
     await page.waitForFunction(() => (window.__bpCopied || "").includes("#define PANEL") && /已複製/.test(document.getElementById("status").textContent), { timeout: 5000 });
