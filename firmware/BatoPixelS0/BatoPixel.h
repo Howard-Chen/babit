@@ -473,6 +473,22 @@ static BPButton button1 = {0}, button2 = {1};
 static float bp_bright = BP_BRIGHTNESS_PCT / 100.0f;
 inline void brightness(float k) { bp_bright = k < 0.0f ? 0.0f : (k > 1.0f ? 1.0f : k); }
 
+// 燈條實際亮度（0–255）：brightness() 的 0–1 乘上當下電源的亮度上限（接電腦 20、PD 160）。
+// 接電腦時，程式自己調暗（比預設暗）就不再跟著壓那麼暗：最少是預設亮度接電腦時的亮度（12），也不會比接 PD 時亮。
+// 這樣 16×16 範例為了 PD 調暗，接電腦時還是看得清楚；預設亮度與調亮的程式完全不受影響（2026-10-25）。
+// 板子版的「電源與限流」用它；預覽不套上限，測試經 bp_led_level（wrapper.cpp）核對。
+// 學員程式不能改上限（檔案開頭擋下）；先 #undef，被擋下時錯誤訊息只會有那一行
+#undef BP_USB_MAX_BRI
+#undef BP_PD_MAX_BRI
+#define BP_USB_MAX_BRI 20     // 接電腦時的亮度上限（0–255）
+#define BP_PD_MAX_BRI  160    // PD 供電時的亮度上限
+inline int bp_led_bri(float k, bool pd) {
+  float b = k * (pd ? BP_PD_MAX_BRI : BP_USB_MAX_BRI);
+  const float usbDefault = BP_BRIGHTNESS_PCT / 100.0f * BP_USB_MAX_BRI;   // 預設亮度接電腦時是多亮（12）
+  if (!pd && b < usbDefault) b = fminf(k * BP_PD_MAX_BRI, usbDefault);
+  return (int)(b + 0.5f);
+}
+
 #ifdef __EMSCRIPTEN__
 // ===================== 瀏覽器預覽版底層 =====================
 // 亮度鎖屬硬體保護，預覽端不套用（canvas 顯示邏輯色彩）。
@@ -770,15 +786,11 @@ inline void show()  { if (++bp_shows > BP_SHOWS_MAX) bp_stuck(2); }
 #endif
 
 // 電源與限流：USB 那一端有電腦在通訊＝接電腦（安全模式）；連續 BP_PD_DELAY_MS 都沒有電腦＝PD 供電。
-// 燈條亮度＝brightness() 設的 0–1（預設 BP_BRIGHTNESS_PCT）× 當下的亮度上限。每格畫面估算電流，超過上限就整張等比調暗（只影響燈條輸出）。
+// 燈條亮度＝bp_led_bri()（brightness() 的 0–1 × 當下的亮度上限，見上面「旋鈕、按鈕、亮度」）。每格畫面估算電流，超過上限就整張等比調暗（只影響燈條輸出）。
 // 學員程式不能覆寫（檔案開頭擋下）；先 #undef，被擋下時錯誤訊息只會有那一行
-#undef BP_USB_MAX_BRI
-#undef BP_PD_MAX_BRI
 #undef BP_USB_MAX_MA
 #undef BP_PD_MAX_MA
 #undef BP_PD_DELAY_MS
-#define BP_USB_MAX_BRI 20     // 接電腦時的亮度上限（0–255）
-#define BP_PD_MAX_BRI  160    // PD 供電時的亮度上限（16×16 的範例自己用 brightness() 調暗，上限不另外壓）
 #define BP_USB_MAX_MA  500    // 接電腦時的電流上限（mA）：電腦的 USB-A 孔只給得起 500 mA
 #define BP_PD_MAX_MA   2500   // PD 供電時的電流上限（mA）：5V/3A 誘騙器留 0.5 A 餘量
 #define BP_PD_DELAY_MS 2000   // 開機或拔掉電腦後，連續多久沒有電腦才當成 PD 供電
@@ -823,8 +835,7 @@ inline void bp_power_update() {
   if (bp_host_present()) { bp_on_pd = false; bp_no_host = false; }
   else if (!bp_no_host) { bp_no_host = true; bp_no_host_ms = millis(); }
   else if (millis() - bp_no_host_ms >= BP_PD_DELAY_MS) bp_on_pd = true;
-  int cap = bp_on_pd ? BP_PD_MAX_BRI : BP_USB_MAX_BRI;
-  uint8_t bri = (uint8_t)(bp_bright * cap + 0.5f);       // bp_bright 由 brightness() 限制在 0–1
+  uint8_t bri = (uint8_t)bp_led_bri(bp_bright, bp_on_pd);  // bp_bright 由 brightness() 限制在 0–1
   if (bri != bp_bri) { bp_strip.setBrightness(bri); bp_bri = bri; }
 }
 

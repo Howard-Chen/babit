@@ -95,6 +95,15 @@ async function compile(kind, code) {
   say(px(1)[0] === 2, "再按一次按鈕 1：點擊次數變 2（得 " + px(1)[0] + "）");
   say(m._bp_warn() === 0, "沒有提醒（begin()、show() 都有寫）：提醒代碼 " + m._bp_warn());
 
+  // 燈條實際亮度（0–255，板子用的 bp_led_bri）：接 PD＝亮度 × 160；接電腦＝亮度 × 20，
+  // 但程式自己調暗（比預設 0.6 暗）時不跟著壓那麼暗：最少是預設接電腦時的 12，也不會比接 PD 時亮
+  const want = [[0.6, 1, 96], [1, 1, 160], [0.24, 1, 38], [0.12, 1, 19],
+                [0.6, 0, 12], [1, 0, 20], [0.8, 0, 16], [0.24, 0, 12], [0.12, 0, 12], [0.05, 0, 8], [0, 0, 0]];
+  const lv = (k, pd) => (typeof m._bp_led_level === "function" ? m._bp_led_level(k, pd) : NaN);
+  const got = want.map(([k, pd]) => lv(k, pd));
+  say(want.every(([, , v], i) => got[i] === v),
+      "燈條亮度：" + want.map(([k, pd, v], i) => `${k}${pd ? " PD" : " 接電腦"}＝${got[i]}${got[i] === v ? "" : "（應為 " + v + "）"}`).join("、"));
+
   // 用迴圈等按鈕：預覽中止這一格
   const w = await compile("preview", WAITING);
   if (!w.ok) say(false, "等按鈕的程式應該編得過（預覽執行時才停下）");

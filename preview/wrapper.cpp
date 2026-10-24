@@ -55,6 +55,10 @@ int bp_pin() { return BP_PIN; }
 EMSCRIPTEN_KEEPALIVE
 int bp_led_index(int x, int y) { return bp_index(x, y); }
 
+// 亮度 k（0–1）在接 PD（pd＝1）或接電腦（pd＝0）時燈條實際的亮度 0–255（板子用的 bp_led_bri）：測試核對
+EMSCRIPTEN_KEEPALIVE
+int bp_led_level(float k, int pd) { return bp_led_bri(k, pd != 0); }
+
 // 測試與之後的滑鼠模擬傾斜：指定 tilt 的值（g），之後 tilt.ready() 也會回 true
 EMSCRIPTEN_KEEPALIVE
 void bp_tilt_set(float x, float y) { bp_tilt_override(x, y); }
