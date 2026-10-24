@@ -5,15 +5,15 @@
 const createBatoPixel = require("./web/batopixel.js");
 
 const RATE = 16000;           // 與板子及瀏覽器重新取樣後的目標取樣率一致
-const CASES = [               // 頻率 → 預期頻段（邊界 60/150/300/550/1000/1800/3200/5500/9000）
-  { hz: 100,  band: 0 },
-  { hz: 220,  band: 1 },
-  { hz: 400,  band: 2 },
-  { hz: 750,  band: 3 },
-  { hz: 1400, band: 4 },
-  { hz: 2500, band: 5 },
-  { hz: 4000, band: 6 },
-  { hz: 7000, band: 7 },
+const CASES = [               // 頻率 → 預期頻段（8×8 的 8 段，邊界 60/110/200/366/669/1223/2236/4087/7500；取各段的中間）
+  { hz: 80,   band: 0 },
+  { hz: 150,  band: 1 },
+  { hz: 270,  band: 2 },
+  { hz: 500,  band: 3 },
+  { hz: 900,  band: 4 },
+  { hz: 1650, band: 5 },
+  { hz: 3000, band: 6 },
+  { hz: 5500, band: 7 },
 ];
 
 createBatoPixel().then((m) => {

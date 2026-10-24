@@ -18,12 +18,12 @@ const pngSize = (buf) => (buf.length > 24 ? [buf.readUInt32BE(16), buf.readUInt3
   const list8 = await (await get("/examples?size=8")).json();
   const official8 = list8.filter((e) => e.category !== "我的範例");
   say(JSON.stringify(official8.map((e) => [e.category, e.title])) ===
-      JSON.stringify([["基本", "彩虹流動"], ["基本", "按鈕切換模式"], ["基本", "英文跑馬燈"], ["感測器", "沙漏流水"], ["感測器", "FFT頻譜"]]),
+      JSON.stringify([["基本", "彩虹流動"], ["基本", "小綠人"], ["基本", "英文跑馬燈"], ["感測器", "沙漏番茄鐘"], ["感測器", "FFT頻譜"]]),
       "8×8：" + official8.map((e) => e.category + "／" + e.title).join("、"));
   say(official8.every((e) => e.id.startsWith("8x8/") && e.desc && e.thumb === "/thumb?id=" + encodeURIComponent(e.id)),
       "每個範例都有 id、說明、縮圖網址");
   const list16 = await (await get("/examples?size=16")).json();
-  say(JSON.stringify(list16.filter((e) => e.category !== "我的範例").map((e) => e.title)) === JSON.stringify(["彩虹流動", "中文跑馬燈"]),
+  say(JSON.stringify(list16.filter((e) => e.category !== "我的範例").map((e) => e.title)) === JSON.stringify(["彩虹流動", "小綠人", "中文跑馬燈", "沙漏番茄鐘", "FFT頻譜"]),
       "16×16：" + list16.map((e) => e.title).join("、"));
   say((await get("/examples?size=12")).status === 400, "size 不是 8／16：400");
 

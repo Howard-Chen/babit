@@ -1,5 +1,5 @@
 // 燈序測試 2：三角定位（取代舊的 student.h TEST_MODE 2）
-// 設定好 BatoPixel.h 的排列旗標（BP_SERPENTINE／BP_TRANSPOSE）後驗證：應該看到左上紅、右上綠、左下藍。
+// 設定好 BatoPixel.h 的排列旗標（BP_ROTATE／BP_TRANSPOSE／BP_SERPENTINE）後驗證：應該看到左上紅、右上綠、左下藍。
 #define PANEL 16             // 測幾乘幾的燈板就寫幾
 #include "BatoPixel.h"
 

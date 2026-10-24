@@ -339,8 +339,14 @@ async function copyText(text) {
   ta.remove();
 }
 
-for (let i = 0; i < 8; i++) bandsEl.appendChild(document.createElement("div"));
-const barEls = Array.from(bandsEl.children);
+// 頻段儀表：條數跟著程式的頻段數（8×8 是 8 段、16×16 是 16 段）
+let barEls = [];
+function syncBars(n) {
+  if (barEls.length === n) return;
+  bandsEl.replaceChildren(...Array.from({ length: n }, () => document.createElement("div")));
+  barEls = Array.from(bandsEl.children);
+}
+syncBars(8);
 
 // ── 聲音來源 ─────────────────────────────────────────────
 // 板子上是 INMP441 經 I²S 送來原始波形；這裡用筆電麥克風產生同一種資料，
@@ -424,6 +430,7 @@ function drawMeter() {
   if (!au.kind || !state.mod) return;
   lvlbar.style.width = (state.mod._bp_audio_level() * 100) + "%";
   beatDot.className = state.mod._bp_audio_beat() ? "hit" : "";
+  syncBars(state.mod._bp_audio_bands());
   for (let i = 0; i < barEls.length; i++)
     barEls[i].style.height = Math.max(2, state.mod._bp_audio_band(i) * 56) + "px";
 }

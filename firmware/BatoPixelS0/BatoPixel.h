@@ -45,6 +45,33 @@
 static const int WIDTH  = BP_W;   // 學員用：畫面寬幾格
 static const int HEIGHT = BP_H;   // 學員用：畫面高幾格
 
+// ── 燈板接線：畫面座標（左上 (0,0)、x 往右、y 往下）→ 燈條上的第幾顆 ─────────
+// 8×8 燈板實測：逐行（第 0 顆在左上，每列方向相同）。
+// 16×16 燈板實測（2026-10-21）：第 0 顆在右上、一欄一欄往下（每欄方向相同，不是蛇行）→ 內容要逆時針轉 90° 才是正的。
+// 新燈板照 README「新燈板接線測試」用 walk.ino 看第 0 顆在哪、怎麼走，再設這三個旗標。
+// 可在 #include 前面用 #define 覆寫（接線測試用）。預覽也編得到這段：測試用 bp_led_index 核對（wrapper.cpp）。
+#ifndef BP_ROTATE
+#if BP_W == 16
+#define BP_ROTATE      90   // 送出前把內容逆時針轉幾度（0、90、180、270）
+#else
+#define BP_ROTATE      0
+#endif
+#endif
+#ifndef BP_TRANSPOSE
+#define BP_TRANSPOSE   0    // 1＝行列互換
+#endif
+#ifndef BP_SERPENTINE
+#define BP_SERPENTINE  0    // 1＝蛇行排列；0＝逐行排列
+#endif
+static inline int bp_index(int x, int y) {
+  if (BP_ROTATE == 90)       { int t = x; x = y; y = BP_W - 1 - t; }   // 燈板是正方形，轉了寬高一樣
+  else if (BP_ROTATE == 180) { x = BP_W - 1 - x; y = BP_H - 1 - y; }
+  else if (BP_ROTATE == 270) { int t = x; x = BP_W - 1 - y; y = t; }
+  if (BP_TRANSPOSE) { int t = x; x = y; y = t; }
+  if (BP_SERPENTINE && (y & 1)) x = BP_W - 1 - x;
+  return y * BP_W + x;                        // 旗標都是 0 時是恆等：逐行（row-major）
+}
+
 // ── 燈板接口：#define PORT B（或 C），沒寫＝A。PCB 上燈板 A／B／C＝GPIO2／3／4 ──────
 #define BP_PORT_A 2
 #define BP_PORT_B 3
@@ -149,19 +176,31 @@ inline void dot(float fx, float fy, Color c) {
 // FFT 與頻段運算在這裡做，板子與瀏覽器跑同一份數學，數值才會一致。
 // 平台差異只在原始取樣來源：板子 ← I²S；瀏覽器 ← Web Audio。
 #define BP_FFT_N 1024        // FFT 點數，兩端相同
-#define BP_BANDS 8           // 八個頻段，一段對應燈板一行
+// 頻段數跟著燈板：8×8 是 8 段、16×16 是 16 段（頻譜一欄一段）。學員用 BANDS。
+#if BP_W == 16
+#define BP_BANDS 16
+#else
+#define BP_BANDS 8
+#endif
+static const int BANDS = BP_BANDS;   // 學員用：有幾個頻段，audio.band(0)～audio.band(BANDS - 1)
 
 // 頻段以 Hz 定義（不是 bin 編號）——兩端取樣率不同時仍指向同一段頻率。
-// 這組邊界可自由調整：對數分佈（每段約一個八度），涵蓋人聲與樂器主要範圍。
+// 60–7500 Hz 對數等分，跟電子音樂節裝置同一套切法（2026-10-18）：16 段每段約半個八度，8 段是 16 段兩兩合併。
+// 舊的 8 段是 60/130/260/500/950/1800/3200/5200/7500：高音兩段太窄，音樂在那裡能量少，常常比較矮。
 // ⚠️ 上限須低於板子的 Nyquist（16kHz 取樣 → 8kHz），否則最高段在兩端涵蓋範圍不同。
 static const float BP_BAND_HZ[BP_BANDS + 1] = {
-  60, 130, 260, 500, 950, 1800, 3200, 5200, 7500
+#if BP_BANDS == 16
+  60, 81, 110, 148, 200, 271, 366, 495, 669, 905, 1223, 1654, 2236, 3023, 4087, 5526, 7500
+#else
+  60, 110, 200, 366, 669, 1223, 2236, 4087, 7500
+#endif
 };
 
 // 顯示刻度：人耳對音量是對數感受，而自然聲音的能量隨頻率遞減（約每八度 -3dB）。
 // 用線性刻度直接畫，低音會吃掉整個畫面、高音永遠貼底——實測就是只有最下面一兩行會亮。
 #define BP_DB_RANGE 50.0f    // 動態範圍：低於峰值這麼多 dB 即視為 0
-#define BP_TILT_DB  7.0f     // 頻譜傾斜補償：每往上一段補這麼多 dB
+// 頻譜傾斜補償：每往上一段補這麼多 dB。8 段實聽定 7；16 段每段跨度減半 → 3.5（總補償量一樣，同音樂節裝置）
+#define BP_TILT_DB  (BP_BANDS == 16 ? 3.5f : 7.0f)
 // 雜訊閘（整體音量 rms，0–1）：低於此值視為「沒有聲音」，畫面整個熄掉。
 // 沒有它的話，安靜房間的環境噪音會被自動增益放大成滿版。
 // 用 rms 判斷而不是用單一頻段：純音把能量集中在一個 bin，寬頻噪音卻分散到
@@ -400,7 +439,8 @@ static BPTilt tilt;
 // ===================== 旋鈕、按鈕、亮度 =====================
 // 板子上一顆旋鈕（GPIO1）、兩顆按鈕（GPIO8、GPIO9）。用來做什麼由學員程式決定，函式庫不會自己拿來做事：
 //   旋鈕調亮度 brightness(knob.value())、調麥克風靈敏度 audio.sensitivity(knob.value())；
-//   按鈕 1 換模式 if (button1.clicked()) mode++;、按鈕 2 暫停／繼續 if (button2.clicked()) paused = !paused;
+//   按鈕 1 換模式 if (button1.clicked()) mode++;、按鈕 2 換顏色 if (button2.clicked()) colorMode++;
+//   （範例的慣例：旋鈕調快慢或強弱、按鈕 1 換內容、按鈕 2 換顏色；不做暫停——畫面停住會被以為壞掉）
 // 預覽沒有硬體：工具頁預覽下方的旋鈕滑桿與兩顆按鈕經 bp_input_set（wrapper 匯出）傳進來。
 static float bp_knob_val = 0.5f;                 // 旋鈕位置 0–1，順時針變大；沒讀到旋鈕時停在中間
 static bool  bp_btn_down[2]  = {false, false};   // 現在有沒有按著
@@ -659,19 +699,12 @@ inline void show()  { if (++bp_shows > BP_SHOWS_MAX) bp_stuck(2); }
 // ===================== 板子版底層 =====================
 // ── 固定接線 ─────────────────────────────────────────────────────────
 // 學員只在程式裡選燈板（PANEL）與接口（PORT，見檔案開頭）；以下是巴比特燈板 PCB 的固定接線與設定，
-// 寫死在這裡。接線設定（BP_SERPENTINE、BP_TRANSPOSE、BP_COLOR_ORDER 等）仍可在 #include 前面用 #define 覆寫
-// （燈板接線測試用）；電源上限不行（見檔案開頭）。亮度的預設值 BP_BRIGHTNESS_PCT 在上面「旋鈕、按鈕、亮度」。
+// 寫死在這裡。接線設定（BP_COLOR_ORDER，以及檔案前面「燈板接線」的 BP_ROTATE、BP_TRANSPOSE、BP_SERPENTINE）
+// 仍可在 #include 前面用 #define 覆寫（燈板接線測試用）；電源上限不行（見檔案開頭）。亮度的預設值 BP_BRIGHTNESS_PCT 在上面「旋鈕、按鈕、亮度」。
 
-// 燈板接線（固定）：8×8 燈板實測 GRB、逐行（第 0 顆在左上，每列方向相同）。
-// 16×16 燈板尚未到貨，先用同一組；實測後若不同，依 BP_W 分開設定。
+// 燈板色序（固定）：8×8 燈板實測 GRB；16×16 先用同一組。燈的排列順序（bp_index）在檔案前面「燈板接線」。
 #ifndef BP_COLOR_ORDER
 #define BP_COLOR_ORDER NEO_GRB
-#endif
-#ifndef BP_TRANSPOSE
-#define BP_TRANSPOSE   0    // 1＝行列互換
-#endif
-#ifndef BP_SERPENTINE
-#define BP_SERPENTINE  0    // 1＝蛇行排列；0＝逐行排列
 #endif
 
 // INMP441 麥克風（I²S，固定啟用）。模組的 L/R 腳接 GND＝左聲道，與下方 SLOT 設定一致。
@@ -745,7 +778,7 @@ inline void show()  { if (++bp_shows > BP_SHOWS_MAX) bp_stuck(2); }
 #undef BP_PD_MAX_MA
 #undef BP_PD_DELAY_MS
 #define BP_USB_MAX_BRI 20     // 接電腦時的亮度上限（0–255）
-#define BP_PD_MAX_BRI  160    // PD 供電時的亮度上限
+#define BP_PD_MAX_BRI  160    // PD 供電時的亮度上限（16×16 的範例自己用 brightness() 調暗，上限不另外壓）
 #define BP_USB_MAX_MA  500    // 接電腦時的電流上限（mA）：電腦的 USB-A 孔只給得起 500 mA
 #define BP_PD_MAX_MA   2500   // PD 供電時的電流上限（mA）：5V/3A 誘騙器留 0.5 A 餘量
 #define BP_PD_DELAY_MS 2000   // 開機或拔掉電腦後，連續多久沒有電腦才當成 PD 供電
@@ -770,13 +803,6 @@ inline void show()  { if (++bp_shows > BP_SHOWS_MAX) bp_stuck(2); }
 static Adafruit_NeoPixel bp_strip(BP_N, BP_PIN, BP_COLOR_ORDER + NEO_KHZ800);
 static I2SClass bp_i2s;
 static bool bp_i2s_ok = false;
-
-// 邏輯座標 → 實體燈號（排列旗標都是 0 時為恆等，= 逐行 row-major）
-static inline int bp_index(int x, int y) {
-  if (BP_TRANSPOSE) { int t = x; x = y; y = t; }
-  if (BP_SERPENTINE && (y & 1)) x = BP_W - 1 - x;
-  return y * BP_W + x;
-}
 
 // ── 電源與限流 ───────────────────────────────────────────────────────
 static bool     bp_on_pd = false, bp_no_host = false;

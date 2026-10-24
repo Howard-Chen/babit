@@ -277,7 +277,7 @@ const OKBODY = "void setup() {\n  begin();\n}\n\nvoid loop() {\n  dot(0, 0, RED)
 
     // 12b. 連點三個範例：只跑最後一個（預覽跑的就是編輯區那段程式，前面的結果回來也不會蓋過去）；按執行送的預覽帶 bg=1
     await page.$eval("#status", (el) => { el.textContent = ""; });
-    for (const t of ["彩虹流動", "按鈕切換模式", "英文跑馬燈"])
+    for (const t of ["彩虹流動", "FFT頻譜", "英文跑馬燈"])
       await page.evaluate((n) => [...document.querySelectorAll(".card")].find((c) => c.querySelector(".cname").textContent === n).click(), t);
     const settled = await page.waitForFunction(() => window.__bp && window.__bp.code === document.getElementById("code").value &&
       /執行中/.test(document.getElementById("status").textContent), { timeout: 30000 }).then(() => true, () => false);

@@ -51,6 +51,10 @@ int bp_height() { return BP_H; }
 EMSCRIPTEN_KEEPALIVE
 int bp_pin() { return BP_PIN; }
 
+// 畫面座標 → 燈條上的第幾顆（板子送燈用的 bp_index，見 BatoPixel.h「燈板接線」）：測試核對燈板接線
+EMSCRIPTEN_KEEPALIVE
+int bp_led_index(int x, int y) { return bp_index(x, y); }
+
 // 測試與之後的滑鼠模擬傾斜：指定 tilt 的值（g），之後 tilt.ready() 也會回 true
 EMSCRIPTEN_KEEPALIVE
 void bp_tilt_set(float x, float y) { bp_tilt_override(x, y); }

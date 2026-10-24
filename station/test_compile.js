@@ -120,6 +120,15 @@ const say = (ok, msg) => { if (!ok) bad++; console.log((ok ? "  ok   " : "  FAIL
     const got = j.ok ? (await loadModule(j.js))._bp_pin() : "（編譯失敗）";
     say(got === pin, `${head.trim().replace(/\n/g, "＋")} → GPIO${got}（期望 ${pin}）`);
   }
+  // 燈板接線：畫面的左上、右上、左下各送到第幾顆燈。8×8 逐行、第 0 顆在左上；
+  // 16×16（2026-10-21 實測）第 0 顆在右上、一欄一欄往下（不是蛇行）→ 內容要逆時針轉 90° 才是正的
+  for (const [panel, want] of [[8, [0, 7, 56]], [16, [240, 0, 255]]]) {
+    const j = await post("preview", prog(OKBODY, "#define PANEL " + panel + "\n"));
+    const m = j.ok ? await loadModule(j.js) : null;
+    const got = !m ? "（編譯失敗）" : typeof m._bp_led_index !== "function" ? "（沒有 _bp_led_index）"
+      : [[0, 0], [panel - 1, 0], [0, panel - 1]].map(([x, y]) => m._bp_led_index(x, y)).join("、");
+    say(got === want.join("、"), `${panel}×${panel} 燈號：左上、右上、左下 → ${got}（期望 ${want.join("、")}）`);
+  }
   const TESTS = path.join(__dirname, "..", "firmware", "panel_tests");
   for (const f of fs.readdirSync(TESTS).filter((f) => f.endsWith(".ino"))) {
     const j = await post("preview", fs.readFileSync(path.join(TESTS, f), "utf8"));

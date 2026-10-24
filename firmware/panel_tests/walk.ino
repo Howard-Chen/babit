@@ -4,6 +4,7 @@
 // 記下：第 0 顆在哪個角？第二排是跳回同側（逐行）還是折返（蛇行）？
 // 這個測試要看實體燈序，所以排列旗標都設成 0（寫在 #include 前面會蓋掉函式庫的設定）。
 #define PANEL 16             // 測幾乘幾的燈板就寫幾
+#define BP_ROTATE 0
 #define BP_SERPENTINE 0
 #define BP_TRANSPOSE 0
 #include "BatoPixel.h"
