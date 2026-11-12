@@ -8,7 +8,7 @@
 //   4. 送板子端（arduino-cli／Xtensa）編譯 —— 證明同一段程式兩端都成立
 //   5. 取 6 個時間點的畫面，拼成 examples/preview.png 供肉眼確認（每列一個範例）
 //   6. 旋鈕、按鈕 1、按鈕 2 都有作用（範例的慣例：旋鈕調快慢或強弱、按鈕 1 換內容、按鈕 2 換顏色），
-//      而且旋鈕轉到最左畫面還在動（停住會被以為壞掉）
+//      而且旋鈕轉到最左畫面還在動（停住會被以為壞掉）。1.0 秒按沒作用的話，再在 6.0 秒按一次（有開場的範例，例如生命遊戲）
 // 有 DURATION 的範例（番茄鐘）另外檢查：按按鈕 1 → 清空、0.5 秒注到九分滿、20 秒漏完、最後只留一顆水滴。
 // 用到 audio.band() 的範例（頻譜類）另外注入 70Hz 正弦波（8 段、16 段的最低一段都包含 70Hz）：
 //   最低頻那一欄要長到接近滿格、最高頻那一欄幾乎不亮；停掉聲音半秒後要回到沒有麥克風時的畫面。
@@ -154,16 +154,16 @@ function montage(rows) {                           // rows[r] = { n, shots: [N*N
 
     {                                               // 旋鈕、兩顆按鈕每個範例都要有作用；旋鈕轉到最左畫面也還在動（停住會被以為壞掉）
       const spectrum = /audio\.band\s*\(/.test(code);
-      // 跑到 until 秒，回傳每一格的畫面。press＝1／2：在 1.0 秒按一下那顆按鈕；
+      // 跑到 until 秒，回傳每一格的畫面。press＝1／2：在 at 秒（預設 1.0 秒）按一下那顆按鈕；
       // sound：頻譜類注入小聲的 100Hz（靈敏度旋鈕要有聲音才看得出差別）
-      const run = async (knob, press, until, sound) => {
+      const run = async (knob, press, until, sound, at = 1) => {
         const mm = await loadModule(pv.js), p = mm._bp_framebuffer();
         const cap = mm._bp_audio_capacity(), abuf = mm._bp_audio_buffer(), ch = new Float32Array(cap);
         mm._bp_audio_set_rate(RATE);
         let ph = 0;
         const frames = [];
         for (let f = 0; f <= until * 60; f++) {
-          const down = f === 60;
+          const down = f === Math.round(at * 60);
           mm._bp_input_set(knob, press === 1 && down ? 1 : 0, press === 2 && down ? 1 : 0);
           if (sound) {
             for (let i = 0; i < cap; i++) { ch[i] = 0.02 * Math.sin(ph); ph += 2 * Math.PI * 100 / RATE; }
@@ -175,13 +175,24 @@ function montage(rows) {                           // rows[r] = { n, shots: [N*N
         }
         return frames;
       };
-      // 比 1.25～1.5 秒之間幾格：只比一格的話，循環動畫可能剛好播到同一格（例如小綠人慢三倍時剛好也在第 8 格）
-      const AT = [75, 80, 85, 90];
-      const differs = (a, b) => AT.some((i) => !a[i].equals(b[i]));
-      const base = await run(0.5, 0, 1.5, spectrum);
-      say(differs(await run(0.5, 1, 1.5, spectrum), base), "按鈕 1 有作用（按下後畫面跟沒按不一樣）");
-      say(differs(await run(0.5, 2, 1.5, spectrum), base), "按鈕 2 有作用");
-      say(differs(await run(0, 0, 1.5, spectrum), base), "旋鈕有作用（轉到最左跟中間的畫面不一樣）");
+      // 比按下後 0.25～0.5 秒之間幾格：只比一格的話，循環動畫可能剛好播到同一格（例如小綠人慢三倍時剛好也在第 8 格）。
+      // 先在 1.0 秒按；沒差別再在 6.0 秒按一次：有開場的範例（生命遊戲先花幾秒讓點冒出來）開場時旋鈕、按鈕還沒作用。
+      // 回傳 null＝兩次都沒作用
+      const bases = {};
+      const works = async (knob, press) => {
+        for (const at of [1, 6]) {
+          const AT = [15, 20, 25, 30].map((k) => Math.round(at * 60) + k);
+          const base = bases[at] || (bases[at] = await run(0.5, 0, at + 0.5, spectrum, at));
+          const got = await run(knob, press, at + 0.5, spectrum, at);
+          if (AT.some((i) => !got[i].equals(base[i]))) return at === 1 ? "" : "（" + at + " 秒才看得出差別：開場時還沒反應）";
+        }
+        return null;
+      };
+      for (const [knob, press, msg] of [[0.5, 1, "按鈕 1 有作用（按下後畫面跟沒按不一樣）"], [0.5, 2, "按鈕 2 有作用"],
+                                        [0, 0, "旋鈕有作用（轉到最左跟中間的畫面不一樣）"]]) {
+        const r = await works(knob, press);
+        say(r !== null, msg + (r || ""));
+      }
       const slow = await run(0, 0, 5, false);
       let moves = 0;
       for (let f = 1; f < slow.length; f++) if (!slow[f].equals(slow[f - 1])) moves++;

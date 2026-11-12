@@ -610,6 +610,19 @@ const MANUAL_HINT =
 
 const panelOfCode = (code) => { const m = code.match(/^[ \t]*#[ \t]*define[ \t]+PANEL[ \t]+(\d+)/m); return m ? Number(m[1]) : null; };
 
+// 燒完讓板子重開、跑新程式：ESP32-S3 內建 USB 看到 RTS=1（DTR=0）就重開，放開 RTS 後正常開機（DTR=0 不會進燒錄模式）。
+// 這版 esptool-js 的 hard reset 只放開 RTS、沒有先拉起來，不會重開；Windows 關閉序列埠時剛好會讓板子重開，
+// Mac 不會，燒完停在燒錄模式、要按 RESET 才跑（2026-10-31 課堂上學員回報並提供這個做法）。
+// 板子一重開 USB 就斷線，後面的訊號送不出去會丟錯，不影響
+async function resetBoard(transport) {
+  try {
+    await transport.setDTR(false);
+    await transport.setRTS(true);
+    await new Promise((r) => setTimeout(r, 100));
+    await transport.setRTS(false);
+  } catch (_) {}
+}
+
 async function flash() {
   const p = panelOfCode(codeEl.value);
   if (p && p !== size && !confirm(`這段程式是 ${p}×${p} 燈板用的（#define PANEL ${p}），現在選的是 ${size}×${size} 燈板，確定要燒錄嗎？`)) return;
@@ -651,7 +664,7 @@ async function flash() {
       eraseAll: false, compress: true,
       reportProgress: (fi, written, total) => setFw(`燒錄中 ${Math.round(written / total * 100)}%`),
     });
-    try { if (loader.hardReset) await loader.hardReset(); } catch (_) {}
+    await resetBoard(transport);
     setFw("✓ 燒錄完成——板子執行中，可拔線帶走");
     flashed = true;
   } catch (e) {

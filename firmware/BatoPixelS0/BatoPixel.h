@@ -94,8 +94,9 @@ static inline int bp_index(int x, int y) {
 
 // ── 電源上限不能在程式裡改 ─────────────────────────────────────────────
 // 學員程式寫在 #include 前面，#define 會蓋掉函式庫的設定。這幾個是保護燈板、電腦 USB 孔與 PD 誘騙器的上限，
-// 一律擋下（兩端都擋，按 ▶ 就看得到）。開發者要測全亮時，直接改下面「電源與限流」的數字。
-#if defined(BP_USB_MAX_BRI) || defined(BP_PD_MAX_BRI) || defined(BP_USB_MAX_MA) || defined(BP_PD_MAX_MA) || defined(BP_PD_DELAY_MS)
+// 一律擋下（兩端都擋，按 ▶ 就看得到）。開發者要測全亮時，直接改下面「燈條實際亮度」「電流估算」的數字。
+#if defined(BP_USB_MAX_BRI) || defined(BP_PD_MAX_BRI) || defined(BP_USB_MAX_MA) || defined(BP_PD_MAX_MA) || defined(BP_PD_DELAY_MS) || \
+    defined(BP_MA_PER_COLOR) || defined(BP_MA_BASE)
 #error "電源上限（亮度與電流）是保護燈板和電腦的設定，程式裡不能改：請刪掉 #define BP_… 那一行"
 #endif
 
@@ -489,6 +490,34 @@ inline int bp_led_bri(float k, bool pd) {
   return (int)(b + 0.5f);
 }
 
+// 電流估算（mA）：板子版的「電源與限流」每格畫面用；預覽不限流，測試經 bp_current_ma 等（wrapper.cpp）核對。
+// sum＝這格所有燈的 r＋g＋b（各 0–255），bri＝燈條亮度（bp_led_bri）。估算超過上限就整張等比調暗，底數不動。
+// 係數照 2026-11-12 電流表實測（充電器模式），取各段的高的那一側，亮的畫面估算會偏高約一到兩成（安全那一側）：
+//   16×16（2020 燈珠）每色全亮 5.2–6.6 mA → 6.5；全滅時整台（ESP32＋256 顆待機）130 mA。
+//   8×8（5050 燈珠）每色全亮 11.3–13.7 mA → 13.5；全滅時整台（ESP32＋64 顆待機）60 mA。
+// 底數含 ESP32，所以上限就是整台的電流，兩種燈板一樣：接電腦 450 mA（USB 2.0 孔給 500，留 50）、
+//   接充電器 1500 mA（16×16 全白放到 2.2 A，停 20 秒燈板就太燙，所有燈板壓在 1.5 A 以內）。
+// 學員程式不能改（檔案開頭擋下）；先 #undef，被擋下時錯誤訊息只會有那一行
+#undef BP_MA_PER_COLOR
+#undef BP_MA_BASE
+#undef BP_USB_MAX_MA
+#undef BP_PD_MAX_MA
+#if BP_W == 16
+#define BP_MA_PER_COLOR 6.5f            // 每色全亮的電流（mA）
+#define BP_MA_BASE      130.0f          // 全滅時整台的電流（mA），含 ESP32
+#else
+#define BP_MA_PER_COLOR 13.5f
+#define BP_MA_BASE      60.0f
+#endif
+#define BP_USB_MAX_MA   450             // 接電腦時整台的電流上限（mA）
+#define BP_PD_MAX_MA    1500            // 接充電器時整台的電流上限（mA）
+inline float bp_est_ma(float sum, int bri) { return sum / 255.0f * BP_MA_PER_COLOR * bri / 255.0f + BP_MA_BASE; }
+// 限流的等比係數：估算沒超過上限是 1；超過就把底數以外的部分縮到剛好等於上限
+inline float bp_limit_k(float est, bool pd) {
+  const float limit = pd ? BP_PD_MAX_MA : BP_USB_MAX_MA;
+  return est > limit ? (limit - BP_MA_BASE) / (est - BP_MA_BASE) : 1.0f;
+}
+
 #ifdef __EMSCRIPTEN__
 // ===================== 瀏覽器預覽版底層 =====================
 // 亮度鎖屬硬體保護，預覽端不套用（canvas 顯示邏輯色彩）。
@@ -786,13 +815,10 @@ inline void show()  { if (++bp_shows > BP_SHOWS_MAX) bp_stuck(2); }
 #endif
 
 // 電源與限流：USB 那一端有電腦在通訊＝接電腦（安全模式）；連續 BP_PD_DELAY_MS 都沒有電腦＝PD 供電。
-// 燈條亮度＝bp_led_bri()（brightness() 的 0–1 × 當下的亮度上限，見上面「旋鈕、按鈕、亮度」）。每格畫面估算電流，超過上限就整張等比調暗（只影響燈條輸出）。
+// 燈條亮度＝bp_led_bri()（brightness() 的 0–1 × 當下的亮度上限，見上面「旋鈕、按鈕、亮度」）。
+// 每格畫面估算電流（bp_est_ma，係數與上限見上面「電流估算」），超過上限就整張等比調暗（只影響燈條輸出）。
 // 學員程式不能覆寫（檔案開頭擋下）；先 #undef，被擋下時錯誤訊息只會有那一行
-#undef BP_USB_MAX_MA
-#undef BP_PD_MAX_MA
 #undef BP_PD_DELAY_MS
-#define BP_USB_MAX_MA  500    // 接電腦時的電流上限（mA）：電腦的 USB-A 孔只給得起 500 mA
-#define BP_PD_MAX_MA   2500   // PD 供電時的電流上限（mA）：5V/3A 誘騙器留 0.5 A 餘量
 #define BP_PD_DELAY_MS 2000   // 開機或拔掉電腦後，連續多久沒有電腦才當成 PD 供電
 
 // 腳位衝突在編譯期就擋下：I²S、I²C 會把腳位接管走，燈板就不會亮
@@ -841,12 +867,10 @@ inline void bp_power_update() {
 
 inline void bp_show() {
   bp_power_update();
-  // 估算這格畫面的電流：每色全亮約 20 mA，乘上亮度；每顆燈待機約 1 mA。超過上限就整張等比調暗
+  // 估算這格畫面的電流，超過上限就整張等比調暗（係數與上限見上面「電流估算」）
   float sum = 0;
   for (int i = 0; i < BP_N; i++) sum += bp_fb[i].r + bp_fb[i].g + bp_fb[i].b;
-  float idle = BP_N * 1.0f, limit = bp_on_pd ? BP_PD_MAX_MA : BP_USB_MAX_MA;
-  float est = sum / 255.0f * 20.0f * bp_bri / 255.0f + idle;
-  float k = est > limit ? (limit - idle) / (est - idle) : 1.0f;
+  float k = bp_limit_k(bp_est_ma(sum, bp_bri), bp_on_pd);
   for (int y = 0; y < BP_H; y++)
     for (int x = 0; x < BP_W; x++) {
       Color c = bp_fb[y * BP_W + x];

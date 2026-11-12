@@ -104,6 +104,45 @@ async function compile(kind, code) {
   say(want.every(([, , v], i) => got[i] === v),
       "燈條亮度：" + want.map(([k, pd, v], i) => `${k}${pd ? " PD" : " 接電腦"}＝${got[i]}${got[i] === v ? "" : "（應為 " + v + "）"}`).join("、"));
 
+  // 電流估算與限流（板子的 bp_show 每格用；預覽不限流，這裡直接呼叫 wrapper 匯出的函式）。
+  // 照 2026-11-12 電流表實測：16×16（2020 燈珠）每色全亮 6.5 mA、全滅時整台（含 ESP32）130 mA；
+  // 8×8（5050 燈珠）每色全亮 13.5 mA、全滅時整台 60 mA。上限是整台的電流，兩種燈板一樣：接電腦 450、充電器 1500
+  // （所有燈板壓在 1.5 A 以內：16×16 全白 2.2 A 停 20 秒燈板太燙）。
+  // sum＝這格所有燈的 r＋g＋b，bri＝燈條亮度（0–255）
+  const fn = (mod, name) => (typeof mod["_" + name] === "function" ? mod["_" + name] : () => NaN);
+  const curMa = (mod, sum, bri) => fn(mod, "bp_current_ma")(sum, bri);
+  const capMa = (mod, pd) => fn(mod, "bp_current_limit")(pd);
+  const scaleK = (mod, est, pd) => fn(mod, "bp_current_k")(est, pd);
+  const limited = (mod, sum, bri, pd) => {     // 限流後的電流：底數不動，其餘等比調暗
+    const base = curMa(mod, 0, bri), est = curMa(mod, sum, bri);
+    return base + (est - base) * scaleK(mod, est, pd);
+  };
+  const r0 = (x) => Math.round(x);
+  const WHITE = 765;                            // 一顆全白的 r＋g＋b
+  const j16 = await compile("preview", SKETCH.replace("#define PANEL 8", "#define PANEL 16"));
+  if (!j16.ok) say(false, "16×16 預覽編譯失敗：\n" + (j16.log || "").split(/\r?\n/).slice(0, 8).join("\n"));
+  else {
+    const m16 = await loadModule(j16.js);
+    const off = r0(curMa(m16, 0, 96)), w16 = r0(curMa(m16, 256 * WHITE, 16)), chk = r0(curMa(m16, 128 * WHITE, 38));
+    say(off === 130 && w16 === 443 && chk === 502,
+        `16×16 估算對得上電流表：全滅 ${off}（實測 130）、全白亮度 16 ${w16}（實測 450）、半面全白亮度 38 ${chk}（實測 500）`);
+    say(capMa(m16, 1) === 1500 && capMa(m16, 0) === 450,
+        `16×16 上限是整台的電流：充電器 ${capMa(m16, 1)}、接電腦 ${capMa(m16, 0)} mA（應為 1500、450）`);
+    const pdFull = r0(limited(m16, 256 * WHITE, 160, 1)), pdHalf = r0(limited(m16, 256 * WHITE, 80, 1));
+    const usbFull = r0(limited(m16, 256 * WHITE, 20, 0));
+    say(pdFull === 1500 && pdHalf === 1500 && usbFull === 450 && scaleK(m16, curMa(m16, 256 * WHITE, 40), 1) === 1,
+        `16×16 限流：全白 1.0、0.5 充電器壓到 ${pdFull}、${pdHalf}，接電腦全白 1.0 壓到 ${usbFull} mA；沒超過上限的畫面（全白 0.25）不調暗`);
+  }
+  const off8 = r0(curMa(m, 0, 96)), w8 = r0(curMa(m, 64 * WHITE, 16));
+  const red8 = r0(curMa(m, 64 * 255, 160)), chk8 = r0(curMa(m, 32 * WHITE, 96));
+  say(off8 === 60 && w8 === 223 && red8 === 602 && chk8 === 548,
+      `8×8 估算對得上電流表：全滅 ${off8}（實測 60）、全白亮度 16 ${w8}（實測 220）、單色亮度 160 ${red8}（實測 610）、半面全白亮度 96 ${chk8}（實測 530）`);
+  say(capMa(m, 1) === 1500 && capMa(m, 0) === 450,
+      `8×8 上限是整台的電流：充電器 ${capMa(m, 1)}、接電腦 ${capMa(m, 0)} mA（應為 1500、450）`);
+  const pd8 = r0(limited(m, 64 * WHITE, 160, 1));
+  say(pd8 === 1500 && scaleK(m, curMa(m, 64 * WHITE, 20), 0) === 1 && scaleK(m, curMa(m, 64 * WHITE, 80), 1) === 1,
+      `8×8 限流：全白 1.0 充電器壓到 ${pd8} mA；全白 0.5 充電器、全白 1.0 接電腦都不會超過上限`);
+
   // 用迴圈等按鈕：預覽中止這一格
   const w = await compile("preview", WAITING);
   if (!w.ok) say(false, "等按鈕的程式應該編得過（預覽執行時才停下）");

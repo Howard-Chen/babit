@@ -54,6 +54,7 @@ const say = (ok, msg) => { if (!ok) bad++; console.log((ok ? "  ok   " : "  FAIL
     ["PANEL 12", prog(OKBODY, "#define PANEL 12\n"), ["PANEL 只能是 8 或 16"]],
     ["PORT D", prog(OKBODY, "#define PANEL 8\n#define PORT D\n"), ["PORT 只能是 A、B 或 C"]],
     ["改電源上限（#define BP_USB_MAX_MA 5000）", prog(OKBODY, "#define PANEL 8\n#define BP_USB_MAX_MA 5000\n"), ["電源上限"]],
+    ["改電流估算（#define BP_MA_PER_COLOR 1）", prog(OKBODY, "#define PANEL 16\n#define BP_MA_PER_COLOR 1\n"), ["電源上限"]],
     ["delayMicroseconds()（第 11 行）",
      prog("void setup() {\n  begin();\n}\n\nvoid loop() {\n  dot(0, 0, RED);\n  delayMicroseconds(500000);\n  show();\n}\n"),
      ["不能用 delayMicroseconds()", "sketch.ino:11"]],

@@ -59,6 +59,16 @@ int bp_led_index(int x, int y) { return bp_index(x, y); }
 EMSCRIPTEN_KEEPALIVE
 int bp_led_level(float k, int pd) { return bp_led_bri(k, pd != 0); }
 
+// 板子每格的電流估算與限流（預覽不限流）：測試核對係數與上限。sum＝所有燈的 r＋g＋b，bri＝燈條亮度
+EMSCRIPTEN_KEEPALIVE
+float bp_current_ma(float sum, int bri) { return bp_est_ma(sum, bri); }
+
+EMSCRIPTEN_KEEPALIVE
+float bp_current_k(float est, int pd) { return bp_limit_k(est, pd != 0); }
+
+EMSCRIPTEN_KEEPALIVE
+int bp_current_limit(int pd) { return pd ? BP_PD_MAX_MA : BP_USB_MAX_MA; }
+
 // 測試與之後的滑鼠模擬傾斜：指定 tilt 的值（g），之後 tilt.ready() 也會回 true
 EMSCRIPTEN_KEEPALIVE
 void bp_tilt_set(float x, float y) { bp_tilt_override(x, y); }

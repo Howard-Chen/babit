@@ -285,6 +285,56 @@ const OKBODY = "void setup() {\n  begin();\n}\n\nvoid loop() {\n  dot(0, 0, RED)
     const allBgPreview = prevReqs.every((u) => u.endsWith("?bg=1"));
     say(prevReqs.length > 0 && allBgPreview, `按執行送的預覽都帶 bg=1（${prevReqs.length} 次）` + (allBgPreview ? "" : "：" + prevReqs.find((u) => !u.endsWith("?bg=1")).replace(STATION, "")));
 
+    // 13. 燒完先送重開訊號、再關序列埠：Mac 關閉序列埠不會讓板子重開，燒完會停在燒錄模式（2026-10-31 課堂）。
+    //     另開一頁，把 esptool-js 換成只記錄訊號的假的（不需要板子）；第二次模擬板子一重開 USB 就斷線
+    {
+      const FAKE = `const t0 = performance.now(), log = (s) => window.__sig.push([s, performance.now() - t0]);
+export class Transport {
+  constructor() { window.__sig = []; }
+  async setDTR(v) { log("DTR=" + (v ? 1 : 0)); }
+  async setRTS(v) { log("RTS=" + (v ? 1 : 0)); if (!v && window.__dropOnReset) throw new Error("The device has been lost."); }
+  async disconnect() { log("close"); }
+}
+export class ESPLoader {
+  constructor() {}
+  async main() { log("main"); }
+  async writeFlash(o) { o.reportProgress(0, 1, 1); log("write"); }
+}`;
+      const fp = await ctx.newPage();
+      fp.on("dialog", (d) => d.accept());
+      const fpErrors = [];
+      fp.on("pageerror", (e) => fpErrors.push(e.message));
+      await fp.setRequestInterception(true);
+      fp.on("request", (r) => r.url().endsWith("/vendor/esptool-bundle.js")
+        ? r.respond({ status: 200, contentType: "text/javascript; charset=utf-8", body: FAKE }) : r.continue());
+      await fp.goto(STATION, { waitUntil: "load" });
+      await fp.waitForFunction(() => window.__bp && window.__bp.mod && /執行中/.test(document.getElementById("status").textContent), { timeout: 30000 });
+      await fp.evaluate(() => {
+        const pick = () => Promise.resolve({});    // 選到的序列埠：Transport 是假的，用不到
+        if (navigator.serial) navigator.serial.requestPort = pick;
+        else Object.defineProperty(navigator, "serial", { value: { requestPort: pick } });
+      });
+      const flashOnce = async () => {
+        await fp.$eval("#fwstat", (el) => { el.textContent = ""; });
+        await fp.click("#flash");
+        await fp.waitForFunction(() => /燒錄完成|燒錄失敗/.test(document.getElementById("fwstat").textContent) &&
+          !document.getElementById("flash").disabled, { timeout: 240000 });
+        return fp.evaluate(() => ({ sig: window.__sig || [], stat: document.getElementById("fwstat").textContent }));
+      };
+      const seq = (r) => r.sig.map(([s]) => s).join(" → ");
+      const at = (r, s) => (r.sig.find(([x]) => x === s) || [s, NaN])[1];
+      const WANT = "main → write → DTR=0 → RTS=1 → RTS=0 → close";
+      let r = await flashOnce();
+      say(seq(r) === WANT && /燒錄完成/.test(r.stat), "燒完先送重開訊號（DTR=0、RTS 拉起再放開）再關序列埠：" + seq(r));
+      const pulse = at(r, "RTS=0") - at(r, "RTS=1");
+      say(pulse >= 90, `重開訊號的 RTS 拉起約 100 毫秒（${Math.round(pulse)} 毫秒）`);
+      await fp.evaluate(() => { window.__dropOnReset = true; });
+      r = await flashOnce();
+      say(/燒錄完成/.test(r.stat) && seq(r) === WANT, "板子一重開 USB 就斷線（放開 RTS 時出錯）：照樣顯示燒錄完成、關序列埠：" + seq(r));
+      say(!fpErrors.length, "燒錄那一頁沒有 JavaScript 錯誤" + (fpErrors.length ? "：" + fpErrors.join("；") : ""));
+      await fp.close();
+    }
+
     // ── 第二部分（Task 8）插在這一行上面 ──
 
     say(!errors.length, "頁面沒有 JavaScript 錯誤" + (errors.length ? "：" + errors.join("；") : ""));
