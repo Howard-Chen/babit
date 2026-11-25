@@ -62,10 +62,13 @@ function resolveExample(root, id) {
 
 // 範例名稱就是檔名：Windows 與 Mac 都不能用的字元、Windows 保留名稱、點開頭或結尾都擋掉。回傳中文原因，合法回 null
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+// 被切成一半的表情符號（UTF-16 的代理字元落單）：存成檔名會變成別的字，之後用名稱就找不到這個檔
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 function validName(name) {
   if (typeof name !== "string" || !name) return "請輸入範例名稱";
   if (name.length > 40) return "名稱最多 40 個字";
   if (/[\\/:*?"<>|\x00-\x1f]/.test(name)) return "名稱不能有這些符號：\\ / : * ? \" < > |";
+  if (LONE_SURROGATE.test(name)) return "名稱裡有不完整的字（表情符號被切斷了），請重新輸入";
   if (/^\.|\.$/.test(name)) return "名稱不能用點（.）開頭或結尾";
   if (RESERVED.test(name)) return "這個名稱是 Windows 保留的，請換一個";
   return null;

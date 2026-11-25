@@ -70,18 +70,57 @@
   canvas#m { background:var(--window); border-radius:6px;
              box-shadow:0 0 0 2px #1b1c1b, 0 0 0 5px #b8b5ab, 0 0 0 6px #87847a; }
   .hud { font-size:12px; color:var(--ink2); }
-  /* 板子上的旋鈕與兩顆按鈕（預覽沒有硬體，在這裡操作）：滑桿＝knob.value()，按住＝pressed()，按一下＝clicked() */
+  /* 燈條預覽（程式開頭寫 #define STRIP 幾顆＝另一個接口接了一條燈條）：特定檔期才用，所以預設收著，
+     只留一顆小小的收合鈕；點開才在燈板預覽下面畫一排燈。程式有用燈條但收著時，鈕的外框變琥珀色提示。
+     除錯模式（零件檢查沒有燈條）整塊收起來，畫面留給文字視窗 */
+  .stripbox { width:480px; display:flex; flex-direction:column; align-items:flex-start; gap:10px; }
+  .right.dbg .stripbox { display:none; }
+  .stripbox .mini { padding:4px 10px; font-size:12px; font-weight:500; }
+  .stripbox .mini.has:not(.on) { --kl:#a8780c; box-shadow:inset 0 0 0 2px var(--amber), inset 0 2px 0 rgba(255,255,255,.55), 0 3px 0 var(--ke), 0 5px 6px rgba(0,0,0,.28); }
+  #stripcv { background:var(--window); border-radius:6px; margin:0 0 2px;
+             box-shadow:0 0 0 2px #1b1c1b, 0 0 0 5px #b8b5ab, 0 0 0 6px #87847a; }
+  #stripcv[hidden], #stripnote[hidden] { display:none; }
+  #stripnote { font-size:12px; color:var(--ink2); line-height:1.5; }
+  /* 板子上的旋鈕與四顆按鈕（預覽沒有硬體，在這裡操作）：滑桿＝knob.value()，按住＝pressed()，按一下＝clicked()。
+     按鈕排成兩排，跟板子一樣：1、2 在上緣，3、4 在下緣。最右邊是蜂鳴器現在的頻率（預覽用電腦的喇叭發聲） */
   .inputs { display:flex; align-items:center; gap:12px; font-size:12px; color:var(--ink2); }
+  .inputs[hidden] { display:none; }       /* 除錯模式接著板子時收起來：這一排只管預覽，板子要按板子上的按鈕 */
   .inputs label { display:flex; align-items:center; gap:6px; }
-  .inputs input[type=range] { width:150px; accent-color:var(--amber); }
+  .inputs input[type=range] { width:130px; accent-color:var(--amber); }
   .inputs #knobv { min-width:3.2em; }
-  .inputs .mini { touch-action:none; user-select:none; }
-  /* 除錯模式：右邊的燈板預覽換成序列埠的文字視窗（板子或預覽程式用 Serial 印出來的東西） */
+  .inputs .mini { touch-action:none; user-select:none; padding:5px 12px; }
+  .inputs .btns { display:grid; grid-template-columns:auto auto; gap:7px 8px; }
+  /* 蜂鳴器：顯示現在的頻率，按一下靜音（預覽的聲音是電腦喇叭發的） */
+  .inputs #buzzhud { min-width:7.4em; white-space:nowrap; padding:5px 8px; font-variant-numeric:tabular-nums; text-align:left; }
+  .inputs #buzzhud.muted { opacity:.7; }
+  /* 除錯模式：右邊多一個序列埠的文字視窗（板子或預覽程式用 Serial 印出來的東西）。
+     還沒接板子時燈板預覽縮小留在上面（零件檢查的說明講的是燈板上的八塊）；接著板子就收起來，看真的燈板 */
+  /* 小螢幕的筆電（1366×768、1280×720）：燈板預覽和文字視窗跟著畫面的高度縮，旋鈕按鈕那一排（和開麥克風之後的音量儀表）
+     才不會被擠到畫面下面。--room＝畫面高度扣掉其他固定的部分（說明列、零件清單、旋鈕按鈕、間距；儀表開著再扣掉它），
+     燈板預覽拿一半（100–200），剩下的給文字視窗（80–300）；夠高的畫面（約 780 以上）就是原本的 200 和 300。
+     281＝上下留白 32＋間距 44＋說明列 34＋零件清單 90＋旋鈕按鈕 65＋餘裕 16；儀表再加 116。
+     矮的畫面改成靠上排：1280 寬時左邊那一欄比畫面高，置中的話右邊這一欄會被往下推到畫面外 */
+  .right.dbg { --room:calc(100vh - 281px); --cv:clamp(100px, calc(var(--room) * 0.5), 200px); }
+  .right.dbg:has(.meter.on) { --room:calc(100vh - 397px); }
+  @media (max-height:780px) { .right.dbg { justify-content:flex-start; } }
+  .right.dbg canvas#m { width:var(--cv); height:var(--cv); }
+  .right.dbg #serialout { height:clamp(80px, calc(var(--room) - var(--cv)), 300px); }
   .serial { width:480px; display:flex; flex-direction:column; gap:8px; }
   .serial[hidden] { display:none; }
   .srow { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink2); }
   .srow #serialstat { flex:1; line-height:1.4; }
-  #serialout { height:440px; margin:0; overflow:auto; background:var(--window); color:#d8d3c2; border-radius:6px;
+  /* 零件清單：除錯模式的「零件檢查」程式每半秒印一行現況，畫成釘在文字視窗上面的一排格子（✓ 過關＝綠、✗ 沒接好＝紅、還沒試＝灰） */
+  #checkpanel { display:grid; gap:6px; font-size:12px; color:var(--ink2); }
+  #checkpanel[hidden] { display:none; }
+  #checkpanel .ctitle { font-size:13px; font-weight:700; color:var(--ink); }
+  #checkpanel .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  #checkpanel .chip { padding:3px 8px; border-radius:3px; background:var(--key); box-shadow:inset 0 0 0 1px var(--key-line);
+                      white-space:nowrap; font-variant-numeric:tabular-nums; }
+  #checkpanel .chip.ok { background:#cfe6c2; color:#1f4a12; box-shadow:inset 0 0 0 1px #6b955b; }
+  #checkpanel .chip.bad { background:#f2c4be; color:#7a1a12; box-shadow:inset 0 0 0 1px #b1564d; }
+  #checkpanel .chip.skip { background:none; box-shadow:inset 0 0 0 1px var(--key-line); opacity:.7; }   /* 不算的項目（預覽沒有傾斜感測器） */
+  #checkpanel .cdetail { font-size:11px; opacity:.85; font-variant-numeric:tabular-nums; }                /* 括號裡的細節（旋鈕的原始讀值…） */
+  #serialout { height:380px; margin:0; overflow:auto; background:var(--window); color:#d8d3c2; border-radius:6px;
                padding:10px 12px; font:12px/1.55 Consolas,"Microsoft JhengHei",monospace; white-space:pre-wrap;
                box-shadow:0 0 0 2px #1b1c1b, 0 0 0 5px #b8b5ab, 0 0 0 6px #87847a, inset 0 2px 8px rgba(0,0,0,.7); }
   .meter { width:480px; background:var(--window); border-radius:4px; padding:12px; display:none;
@@ -99,11 +138,11 @@
   .gallery { border-top:1px solid var(--line); padding-top:10px; }
   .gtitle { font-size:12px; color:var(--ink2); margin-bottom:8px; }
   .cards { display:flex; gap:10px; overflow-x:auto; padding-bottom:4px; }
-  /* 卡片是 <button>：瀏覽器預設把按鈕內容垂直置中，卡片被撐成等高時，說明較短的卡
-     內容會整個往下移，縮圖就對不齊。改成直向 flex，內容一律從頂端排。
-     寬 134＝邊框 2＋內距 20＋縮圖 112，縮圖左右留白才對稱（112÷8＝14，LED 放大才是整數倍）。 */
-  .card { flex:0 0 auto; width:134px; background:var(--key); border:1px solid var(--key-line);
-          border-radius:6px; padding:10px; cursor:pointer; text-align:left;
+  /* 卡片只有縮圖和標題（說明放在滑鼠提示），每一組排成兩排：範例多了以後不用一直左右拖（2026-11-24）。
+     卡片是 <button>：瀏覽器預設把按鈕內容垂直置中，改成直向 flex，內容一律從頂端排。
+     寬 110＝邊框 2＋內距 12＋縮圖 96，縮圖左右留白才對稱（96÷8＝12、96÷16＝6，LED 放大才是整數倍）。 */
+  .card { flex:0 0 auto; width:110px; background:var(--key); border:1px solid var(--key-line);
+          border-radius:6px; padding:6px; cursor:pointer; text-align:left;
           color:inherit; font:inherit;
           display:flex; flex-direction:column; justify-content:flex-start;
           box-shadow:inset 0 2px 0 rgba(255,255,255,.55), 0 3px 0 var(--key-edge), 0 5px 6px rgba(0,0,0,.22); }
@@ -111,13 +150,13 @@
   .card.on { border-color:var(--lit-line); background:var(--lit-tint); transform:translateY(2px);
              box-shadow:inset 0 2px 4px rgba(0,0,0,.15), 0 1px 0 var(--lit-edge); }   /* 選取：鍵帽壓下、亮燈 */
   /* 格數由縮圖推得（寬 ÷ 高，每格是正方形），存在 --frames；每格 0.1 秒 */
-  .card .thumb { --frames:8; width:112px; height:112px; border-radius:3px; background-color:var(--window);
-                 background-repeat:no-repeat; background-size:calc(112px * var(--frames)) 112px;
+  .card .thumb { --frames:8; width:96px; height:96px; border-radius:3px; background-color:var(--window);
+                 background-repeat:no-repeat; background-size:calc(96px * var(--frames)) 96px;
                  image-rendering:pixelated; box-shadow:0 0 0 1px #000;
                  animation:sprite calc(var(--frames) * 0.1s) steps(var(--frames)) infinite; }
-  @keyframes sprite { to { background-position:calc(-112px * var(--frames)) 0; } }
-  .card .cname { font-size:13px; color:var(--ink); margin-top:8px; }
-  .card .cdesc { font-size:11px; color:var(--ink2); line-height:1.35; margin-top:3px; }
+  @keyframes sprite { to { background-position:calc(-96px * var(--frames)) 0; } }
+  /* 標題一行，太長的用「…」收尾（完整的標題和說明在滑鼠提示） */
+  .card .cname { font-size:13px; color:var(--ink); margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .gempty { font-size:12px; color:var(--ink2); padding:6px 2px; }
   #artbri { accent-color:var(--orange); }
   /* 燈板尺寸：兩顆並排的鍵，選中的那顆壓下（放在原本「⚙ 硬體設定」的位置） */
@@ -132,9 +171,12 @@
   .group { flex:0 0 auto; display:flex; flex-direction:column; gap:6px; }
   .group + .group { border-left:1px solid var(--key-line); padding-left:10px; }
   .glabel { font-size:11px; color:var(--ink2); }
-  .gcards { display:flex; gap:10px; }
+  .gcards { display:grid; grid-auto-flow:column; grid-template-rows:repeat(2, auto); gap:10px; justify-content:start; }   /* 兩排：由上而下、再往右 */
   /* 標題列：右邊放「複製給 AI 的說明」；範例標題列：右邊放「＋ 新增範例」 */
   .top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  /* 標題旁邊的小字：現在是哪個部署目標、哪一版（開發版／離線版／雲端版 · 來源 commit · 日期） */
+  .ver { font-size:11px; color:var(--ink2); margin-right:auto; white-space:nowrap; }
+  .ver[hidden] { display:none; }
   .gtitle { display:flex; align-items:center; justify-content:space-between; gap:10px; }
   /* 選到「我的範例」的卡片時多出「🗑 刪除」，程式改過再多「💾 存回」（官方範例沒有這兩顆） */
   .gbtns { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; }
@@ -157,6 +199,7 @@
 <div class="left">
   <div class="top">
     <h1>Babit 工具（貼上 → 預覽 → 燒錄／燈板）</h1>
+    <span id="ver" class="ver" hidden title="這個工具頁是哪個部署目標、哪一版"></span>
     <button id="aiguide" class="mini" type="button" title="把寫程式的規則與範例複製起來，貼給你的 AI">📋 複製給 AI 的說明</button>
   </div>
   <textarea id="code" spellcheck="false"></textarea>
@@ -169,7 +212,7 @@
     <button id="flash">⚡ 燒錄到板子</button>
     <button id="mic" class="mini">🎤 開啟麥克風</button>
     <button id="tone" class="mini">🔊 測試音</button>
-    <button id="debug" class="mini" type="button" title="載入感應器檢查程式，右邊改成顯示板子序列埠印出來的文字">🔧 除錯模式</button>
+    <button id="debug" class="mini" type="button" title="載入「零件檢查」程式：燒進板子後把每個零件試一次，燈板上過關的那一塊會變綠；右邊改成顯示板子印出來的文字">🔧 除錯模式</button>
   </div>
   <div id="addpanel" hidden>
     <div class="row">
@@ -193,24 +236,35 @@
     <button id="copylog" class="mini" type="button">📋 複製錯誤訊息（貼給 AI）</button>
   </div>
   <div class="gallery" id="gallery" hidden>
-    <div class="gtitle"><span>範例（點一下載入並執行）</span><span class="gbtns"><button id="exupdate" class="mini" type="button" hidden title="把編輯區的程式存回這個範例（Ctrl+S）">💾 存回</button><button id="exdelete" class="mini" type="button" hidden title="刪除這個範例（程式會留在編輯區）">🗑 刪除</button><button id="addex" class="mini" type="button">＋ 新增範例</button></span></div>
+    <div class="gtitle"><span>範例（點一下載入並執行）</span><span class="gbtns"><button id="exupdate" class="mini" type="button" hidden title="把編輯區的程式存回這個範例（Ctrl+S）">💾 存回</button><button id="exdelete" class="mini" type="button" hidden title="刪除這個範例（程式會留在編輯區）">🗑 刪除</button><button id="eximport" class="mini" type="button" title="把從 Babit 工具匯出的 zip 放回來，變成「我的範例」">⬆ 匯入 zip</button><button id="exexport" class="mini" type="button" title="把編輯區的程式打包成 Arduino IDE 可以直接開的資料夾（zip，含函式庫），不用 Babit 工具也能上傳">⬇ 匯出 Arduino 資料夾</button><button id="addex" class="mini" type="button">＋ 新增範例</button><input id="eximportfile" type="file" accept=".zip,application/zip" hidden></span></div>
     <div class="cards" id="cards"></div>
   </div>
 </div>
 <div class="right">
   <canvas id="m" width="480" height="480"></canvas>
+  <div class="stripbox" id="stripbox">
+    <button id="striptoggle" class="mini" type="button" aria-expanded="false" title="燈條：程式開頭寫 #define STRIP 60，另一個接口就可以接一條 60 顆的燈條，用 strip.dot(第幾顆, 顏色)、strip.fill(顏色) 畫。點一下展開或收起燈條的預覽">▸ 燈條預覽</button>
+    <canvas id="stripcv" width="480" height="24" hidden></canvas>
+    <div id="stripnote" hidden></div>
+  </div>
   <div class="serial" id="serialwrap" hidden>
     <div class="srow">
       <span id="serialstat"></span>
       <button id="serialconn" class="mini" type="button">連線板子</button>
       <button id="serialclear" class="mini" type="button">清除</button>
     </div>
+    <div id="checkpanel" hidden></div>
     <pre id="serialout"></pre>
   </div>
-  <div class="inputs" id="inputs" title="板子上的旋鈕與兩顆按鈕：程式用 knob.value()、button1／button2 讀">
+  <div class="inputs" id="inputs" title="板子上的旋鈕與四顆按鈕：程式用 knob.value()、button1–button4 讀（按鈕 1、2 在板子上緣，3、4 在下緣）">
     <label>旋鈕 <input type="range" id="knob" min="0" max="100" value="50"><span id="knobv">50%</span></label>
-    <button id="btn1" class="mini" type="button">按鈕 1</button>
-    <button id="btn2" class="mini" type="button">按鈕 2</button>
+    <span class="btns">
+      <button id="btn1" class="mini" type="button">按鈕 1</button>
+      <button id="btn2" class="mini" type="button">按鈕 2</button>
+      <button id="btn3" class="mini" type="button">按鈕 3</button>
+      <button id="btn4" class="mini" type="button">按鈕 4</button>
+    </span>
+    <button id="buzzhud" class="mini" type="button" title="蜂鳴器：程式用 buzzer.beep()、buzzer.tone() 讓它響，預覽用電腦的喇叭發聲。按一下靜音、再按一下打開（只管預覽，板子上的蜂鳴器不受影響）">🔔 聲音</button>
   </div>
   <div class="hud" id="hud">先按「▶ 執行」</div>
   <div class="meter" id="meter">
@@ -281,6 +335,75 @@ let size = 8;
 try { if (localStorage.getItem(SIZE_KEY) === "16") size = 16; } catch (_) { /* 瀏覽器不給存取就用 8×8 */ }
 
 const setFw = (t) => { fwstatEl.textContent = t; };
+const stored = (k) => { try { return localStorage.getItem(k) || ""; } catch (_) { return ""; } };
+const remember = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* 瀏覽器不給存就算了 */ } };
+
+// ── 部署目標 ─────────────────────────────────────────────────────────
+// 同一個工具頁給三個目標用（開發版、離線版、雲端版）。開頁先問編譯站自己是哪一個（GET /version），標題旁邊顯示目標與版本。
+// 雲端版（整班共用的主機）跟另外兩個不一樣的地方，程式裡都用 CLOUD 標出來：
+//   - 自己的範例存在這個瀏覽器裡（browserStore），不存在編譯站
+//   - 編輯區的程式自動存一份草稿：重新整理、不小心關掉分頁，再開都還在
+//   - 開頁就檢查這個瀏覽器能不能燒錄
+//   - 不連這台電腦的 Art-Net 橋（公開的網站去連本機，瀏覽器會跳出權限詢問）
+//   - 編譯、匯出、匯入要課堂代碼（編譯站回 401 就問一次，記在瀏覽器裡）
+let ver = { target: "dev", label: "", source: null, dirty: null, date: null };
+let CLOUD = false;
+async function loadVersion() {
+  try {
+    const v = await (await fetch("/version")).json();
+    if (v && typeof v.target === "string") ver = v;
+  } catch (_) { /* 問不到（編譯站沒開）：當成不是雲端版，標題旁邊不顯示 */ }
+  CLOUD = ver.target === "cloud";
+  const el = document.getElementById("ver");
+  if (ver.label) {
+    el.textContent = [ver.label, ver.source ? ver.source + (ver.dirty ? "＋還沒 commit 的修改" : "") : "", ver.date].filter(Boolean).join(" · ");
+    el.hidden = false;
+  }
+}
+
+// ── 送給編譯站的請求（GET 以外的都走這裡）──────────────────────────────
+// 每個請求帶一個代號（這個瀏覽器第一次開頁時隨機產生）：雲端版整班共用編譯站，排隊時每個人各排各的、互不影響。
+// 雲端版另外要課堂代碼：編譯站回 401 就問一次，記在瀏覽器裡，再重送。老師給的連結後面帶 #c=代碼 的話，開頁就記起來、不用再問。
+const CLIENT_KEY = "babit.client", CODE_KEY = "babit.classCode";
+let clientId = stored(CLIENT_KEY);
+if (!/^[a-z0-9]{16}$/.test(clientId)) {
+  clientId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
+  remember(CLIENT_KEY, clientId);
+}
+let classCode = stored(CODE_KEY);
+{
+  const m = location.hash.match(/^#c=(.+)$/);
+  if (m) {
+    try { classCode = decodeURIComponent(m[1]).trim(); remember(CODE_KEY, classCode); } catch (_) {}
+    history.replaceState(null, "", location.pathname + location.search);   // 代碼不留在網址列（截圖、分享網址時不會帶出去）
+  }
+}
+let codeAsk = null;                    // 同時有好幾個請求被擋下時只問一次
+function askClassCode(msg, tried) {
+  if (classCode !== tried) return Promise.resolve(true);       // 別的請求已經問到新的代碼了：直接用它重送
+  if (!codeAsk) codeAsk = Promise.resolve().then(() => {
+    const v = prompt(msg || "請輸入課堂代碼（老師會公布）", "");
+    codeAsk = null;
+    if (v == null || !v.trim()) return false;
+    classCode = v.trim();
+    remember(CODE_KEY, classCode);
+    return true;
+  });
+  return codeAsk;
+}
+async function api(url, opts = {}) {
+  for (let tries = 0; ; tries++) {
+    const tried = classCode;
+    // 標頭只能放英數字與符號：代碼可能是中文，先編碼（編譯站會解回來）
+    const headers = Object.assign({ "X-Babit-Client": clientId }, tried ? { "X-Babit-Code": encodeURIComponent(tried) } : {}, opts.headers || {});
+    const r = await fetch(url, Object.assign({}, opts, { headers }));
+    if (r.status !== 401 || tries >= 2) return r;
+    let j = null;
+    try { j = await r.clone().json(); } catch (_) {}
+    if (!j || !j.needCode || !(await askClassCode(j.error, tried))) return r;
+  }
+}
+const jsonOf = async (r) => { try { return (await r.json()) || {}; } catch (_) { return {}; } };
 
 // ── 錯誤、提醒、複製 ─────────────────────────────────────────────────
 function showLog(t) { logEl.textContent = t; logWrap.hidden = false; }
@@ -298,7 +421,11 @@ const WARN_TEXT = {
   1: "setup() 裡要呼叫 begin()：沒有它，板子上的燈板、麥克風、傾斜感測都不會啟動（預覽看不出來）。",
   2: "loop() 的最後要呼叫 show()：沒有它，板子上的燈不會亮，聲音與傾斜也不會更新（預覽看不出來）。",
   4: "loop() 裡只能呼叫一次 show()：每次 loop() 畫一格就好，有先後順序的動畫用 seconds() 算現在在哪一段。",
+  8: "buzzer.beep() 的長度單位是秒：這支程式給了超過 10 秒（例如寫 200 會響 200 秒）。如果是把毫秒當成秒，請改成小數（200 毫秒＝0.2）。",
 };
+// 蜂鳴器的音太低：板子上那顆蜂鳴器 1000 Hz 以下很小聲，預覽的喇叭卻一樣大聲（聽不出差別）。低於這個頻率響超過這麼多格就提醒
+const BUZZ_QUIET_HZ = 1000, LOW_TONE_FRAMES = 12;
+const LOW_TONE_TEXT = "蜂鳴器有一段聲音低於 1000 Hz：板子上那顆蜂鳴器在這麼低的音很小聲（預覽的喇叭聽不出差別）。請把音移到第 7 個八度附近（NOTE_C7～NOTE_G7 最大聲）。";
 // 程式的 PANEL 跟目前選的燈板不同：預覽照程式顯示，但燒到選的那片燈板上會不對
 function panelWarnText(p) {
   return !p || p === size ? "" :
@@ -307,8 +434,10 @@ function panelWarnText(p) {
 }
 function renderWarn() {
   const lines = [];
+  if (state.browserWarn) lines.push(state.browserWarn);   // 雲端版：這個瀏覽器不能燒錄（開頁時檢查）
   if (state.panelWarn) lines.push(state.panelWarn);
-  for (const bit of [1, 2, 4]) if (state.warn & bit) lines.push(WARN_TEXT[bit]);
+  for (const bit of [1, 2, 4, 8]) if (state.warn & bit) lines.push(WARN_TEXT[bit]);
+  if (state.lowTone >= LOW_TONE_FRAMES) lines.push(LOW_TONE_TEXT);
   warnEl.textContent = lines.map((l) => "⚠ " + l).join("\n");
   warnEl.hidden = !lines.length;
 }
@@ -316,7 +445,7 @@ function renderWarn() {
 const STUCK = {
   "babit-stuck-1": "預覽停住了：loop() 裡有一直在等時間的迴圈（例如 while (millis() - t0 < 500)）。\n動畫請用 seconds() 算出這一格該畫什麼，不要用迴圈等。",
   "babit-stuck-2": "預覽停住了：loop() 裡一直呼叫 show()（例如寫在 while 或 for 迴圈裡）。\n每次 loop() 只畫一格，最後呼叫一次 show()。",
-  "babit-stuck-3": "預覽停住了：loop() 裡有一直在等聲音、傾斜或按鈕的迴圈（例如 while (!audio.beat())、while (!button1.clicked())）。\n同一格裡聲音、傾斜、按鈕都不會變：每一格檢查一次就好，用變數記住現在的狀態。",
+  "babit-stuck-3": "預覽停住了：loop() 裡有一直在等聲音、傾斜、按鈕或蜂鳴器的迴圈（例如 while (!audio.beat())、while (!button1.clicked())、while (buzzer.playing())）。\n同一格裡聲音、傾斜、按鈕、蜂鳴器都不會變：每一格檢查一次就好，用變數記住現在的狀態。",
 };
 function stopPreview(e) {
   state.mod = null;
@@ -473,20 +602,79 @@ artBri.oninput = () => {
   art.briTouched = true; artBriV.textContent = artBri.value + "%";
   if (art.ws && art.ws.readyState === 1) art.ws.send(JSON.stringify({ type: "config", brightness: artBri.value / 100 }));
 };
-artnetConnect();
-window.__bpArt = art;
+window.__bpArt = art;         // 開始連線在最下面的開頁流程裡（雲端版不連）
 
 // 畫布固定 480×480，格數跟著編出來的模組（8×8：每格 52、間隔 8；16×16：每格 26、間隔 3）
 function gridOf(N) {
   const gap = N <= 8 ? 8 : 3, cell = Math.floor((472 - (N - 1) * gap) / N);
   return { gap, cell, r: Math.max(3, Math.round(cell * 0.2)), pad: (480 - N * cell - (N - 1) * gap) / 2 };
 }
+// ── 燈條預覽（收合，預設收著）──────────────────────────────────────
+// 程式開頭的 #define STRIP 幾顆＝另一個接口接了一條燈條（函式庫的 strip.dot() 那一組）。預覽畫成一直線，一顆一格；
+// 一排最多 80 顆（再多每顆不到 6 像素，看不清楚），超過就平均折成幾排。開關狀態記在這台電腦的瀏覽器裡。
+const STRIP_KEY = "babit.strip";
+const stripBtn = document.getElementById("striptoggle"), stripCv = document.getElementById("stripcv"), stripNote = document.getElementById("stripnote");
+const stripCtx = stripCv.getContext("2d");
+const strip = { open: stored(STRIP_KEY) === "1", n: 0, ptr: 0, port: "", layout: null };
+function stripLayout(n) {
+  const rows = Math.max(1, Math.ceil(n / 80)), per = Math.ceil(n / rows);
+  const pitch = Math.max(1, Math.min(28, Math.floor(480 / per))), gap = pitch >= 12 ? 3 : (pitch >= 7 ? 2 : 1);
+  const w = pitch - gap, h = Math.max(w, 14), rowGap = 5, pad = 6;
+  const left = Math.floor((480 - (per * pitch - gap)) / 2);
+  return { w, h, r: Math.min(4, Math.round(w * 0.3)), width: 480, height: pad * 2 + rows * h + (rows - 1) * rowGap,
+           at: (i) => ({ x: left + (i % per) * pitch, y: pad + Math.floor(i / per) * (h + rowGap) }) };
+}
+window.__bpStripLayout = stripLayout;   // 測試用：第幾顆畫在哪裡
+// 收合鈕的字、燈條畫布與說明要不要出現：換程式、按收合鈕之後呼叫
+function stripRender() {
+  const info = strip.n ? `${strip.port} 接口・${strip.n} 顆` : "";
+  stripBtn.textContent = strip.open ? "▾ 燈條預覽" + (info ? "（" + info + "）" : "")
+                                    : "▸ 燈條預覽" + (strip.n ? "・這份程式有 " + strip.n + " 顆燈條（" + strip.port + " 接口）" : "");
+  stripBtn.setAttribute("aria-expanded", strip.open ? "true" : "false");
+  stripBtn.classList.toggle("on", strip.open);
+  stripBtn.classList.toggle("has", strip.n > 0);
+  stripCv.hidden = !(strip.open && strip.n > 0);
+  stripNote.hidden = !(strip.open && strip.n === 0);
+  stripNote.textContent = stripNote.hidden ? "" : "這份程式沒有用燈條。要用的話在程式開頭、#include 的前面加一行 #define STRIP 60（60 是燈條有幾顆燈），再用 strip.fill(顏色)、strip.dot(第幾顆, 顏色) 畫。";
+  if (!stripCv.hidden) {
+    strip.layout = stripLayout(strip.n);
+    if (stripCv.height !== strip.layout.height) stripCv.height = strip.layout.height;
+  }
+}
+// 新的預覽模組開始跑：問它有沒有燈條、幾顆、接在哪個接口（GPIO2＝A、GPIO3＝B）
+function stripAttach(mod) {
+  strip.n = mod && mod._bp_strip_count ? mod._bp_strip_count() : 0;      // 舊的預覽模組沒有這個函式：當成沒有燈條
+  strip.ptr = strip.n ? mod._bp_strip_buffer() : 0;
+  strip.port = strip.n ? (mod._bp_strip_pin() === 3 ? "B" : "A") : "";
+  stripRender();
+}
+// 每一格：展開著而且程式有燈條才畫。亮度跟燈板的預覽同一個算法（strip.brightness() 調低就變暗，預設亮度＝原本的樣子）
+function stripDraw(mod) {
+  if (!strip.open || !strip.n || !strip.layout) return;
+  const L = strip.layout, buf = mod.HEAPU8.subarray(strip.ptr, strip.ptr + strip.n * 3);
+  const gain = Math.min(1, mod._bp_strip_brightness() / mod._bp_brightness_default());
+  stripCtx.clearRect(0, 0, stripCv.width, stripCv.height);
+  for (let i = 0; i < strip.n; i++) {
+    const p = L.at(i), k = i * 3;
+    stripCtx.fillStyle = `rgb(${Math.round(buf[k]*gain)},${Math.round(buf[k+1]*gain)},${Math.round(buf[k+2]*gain)})`;
+    stripCtx.beginPath();
+    stripCtx.roundRect(p.x, p.y, L.w, L.h, L.r);
+    stripCtx.fill();
+  }
+}
+stripBtn.addEventListener("click", () => {
+  strip.open = !strip.open;
+  try { if (strip.open) localStorage.setItem(STRIP_KEY, "1"); else localStorage.removeItem(STRIP_KEY); } catch (_) { /* 瀏覽器不給存：這次開頁有效就好 */ }
+  stripRender();
+});
+stripRender();
+
 // 旋鈕與按鈕（預覽沒有硬體）：滑桿＝knob.value()；按住按鈕＝pressed()。按下時另外記一筆，
 // 就算按得比一格還快（不到 1/60 秒就放開），下一格也會算成「按了一下」（clicked()）
 const knobEl = document.getElementById("knob"), knobV = document.getElementById("knobv");
-const input = { down:[false, false], latch:[false, false] };
+const input = { down:[false, false, false, false], latch:[false, false, false, false] };
 knobEl.addEventListener("input", () => { knobV.textContent = knobEl.value + "%"; });
-["btn1", "btn2"].forEach((id, i) => {
+["btn1", "btn2", "btn3", "btn4"].forEach((id, i) => {
   const b = document.getElementById(id);
   const release = () => { input.down[i] = false; };
   b.addEventListener("pointerdown", (e) => { e.preventDefault(); input.down[i] = true; input.latch[i] = true; });
@@ -497,15 +685,77 @@ knobEl.addEventListener("input", () => { knobV.textContent = knobEl.value + "%";
 });
 window.__bpInput = input;   // 測試用
 
+// ── 蜂鳴器（預覽沒有硬體，用電腦的喇叭發聲）───────────────────────────
+// 程式叫蜂鳴器響的頻率每格讀一次（bp_buzzer_hz）：方波、音量開很小（板子上那顆也不大聲），畫面上同時顯示頻率。
+// 顯示頻率的那一顆就是靜音鍵：課堂上十幾台電腦一起響會很吵。靜音只管預覽（電腦的喇叭），板子上的蜂鳴器不受影響；
+// 選擇記在瀏覽器裡，重新整理後還是一樣。
+//   hz ＝程式現在要它響的頻率（畫面上顯示的，靜音時照樣顯示：學員看得出程式有在叫它響）
+//   out＝真的送到喇叭的頻率：靜音、使用者還沒點過頁面（瀏覽器規定點過才能出聲）、分頁收起來（畫面不再更新，沒人會去停它）時是 0
+const BUZZ_VOLUME = 0.04;
+const BUZZ_MUTE_KEY = "babit-buzz-muted";
+const buzz = { hz: 0, out: 0, ac: null, osc: null, gain: null, gestured: false, muted: false, broken: false };
+try { buzz.muted = localStorage.getItem(BUZZ_MUTE_KEY) === "1"; } catch (_) { /* 瀏覽器不給存：每次開頁都是有聲音 */ }
+const buzzHud = document.getElementById("buzzhud");
+for (const ev of ["pointerdown", "keydown"]) addEventListener(ev, () => { buzz.gestured = true; }, { capture: true });
+function buzzerHud() {
+  buzzHud.textContent = (buzz.muted ? "🔕 " : "🔔 ") + (buzz.hz ? Math.round(buzz.hz) + " Hz" : buzz.muted ? "靜音" : "聲音");
+  buzzHud.classList.toggle("muted", buzz.muted);
+  buzzHud.setAttribute("aria-pressed", buzz.muted ? "true" : "false");
+}
+function buzzerSet(hz) {
+  if (!(hz > 0)) hz = 0;
+  if (hz !== buzz.hz) { buzz.hz = hz; buzzerHud(); }
+  buzzerApply();
+}
+// 把該出聲的頻率送到喇叭。每一格都會呼叫，跟上一次不一樣才動喇叭：所以點過頁面、取消靜音、切回分頁之後，
+// 就算程式要的頻率一直沒變，也會馬上響（以前只在頻率改變時才去開喇叭，一直響同一個音的程式點了頁面也沒聲音）
+function buzzerApply() {
+  const want = buzz.muted || !buzz.gestured || buzz.broken || document.visibilityState === "hidden" ? 0 : buzz.hz;
+  if (want === buzz.out) return;
+  try {
+    if (!buzz.ac) {
+      buzz.ac = new (window.AudioContext || window.webkitAudioContext)();
+      buzz.osc = buzz.ac.createOscillator();
+      buzz.osc.type = "square";
+      buzz.gain = buzz.ac.createGain();
+      buzz.gain.gain.value = 0;
+      buzz.osc.connect(buzz.gain);
+      buzz.gain.connect(buzz.ac.destination);
+      buzz.osc.start();
+    }
+    if (want && buzz.ac.state === "suspended") buzz.ac.resume().catch(() => {});
+    const now = buzz.ac.currentTime;
+    if (want) buzz.osc.frequency.setValueAtTime(want, now);
+    buzz.gain.gain.setTargetAtTime(want ? BUZZ_VOLUME : 0, now, 0.003);   // 3 毫秒淡入淡出，開關時才不會「啪」一聲
+    buzz.out = want;
+  } catch (_) { buzz.broken = true; buzz.out = 0; }   // 這個瀏覽器不能出聲：畫面上的頻率照樣顯示，之後不再試
+}
+buzzHud.addEventListener("click", () => {
+  buzz.muted = !buzz.muted;
+  try { if (buzz.muted) localStorage.setItem(BUZZ_MUTE_KEY, "1"); else localStorage.removeItem(BUZZ_MUTE_KEY); } catch (_) {}
+  buzzerHud();
+  buzzerApply();
+});
+document.addEventListener("visibilitychange", buzzerApply);
+buzzerHud();
+window.__bpBuzz = buzz;     // 測試用
+
 function frame(now) {
   requestAnimationFrame(frame);
-  if (!state.mod || now - state.last < state.interval - 1) return;
+  if (!state.mod) { buzzerSet(0); return; }               // 預覽停了（還沒執行、編譯失敗、程式卡住）：不能還在響
+  if (now - state.last < state.interval - 1) return;
   state.last = now;
   pumpAudio();
   const t = (now - state.t0) / 1000;
-  state.mod._bp_input_set(knobEl.value / 100, input.down[0] || input.latch[0] ? 1 : 0, input.down[1] || input.latch[1] ? 1 : 0);
-  input.latch[0] = input.latch[1] = false;
+  const held = input.down.map((d, i) => (d || input.latch[i] ? 1 : 0));
+  state.mod._bp_input_set(knobEl.value / 100, held[0], held[1], held[2], held[3]);
+  input.latch.fill(false);
   try { state.mod._bp_tick(t); } catch (e) { stopPreview(e); return; }
+  // 蜂鳴器：程式現在要它響的頻率。這兩種時候預覽不出聲——新的程式編譯失敗（舊的預覽還在跑，一邊看錯誤訊息一邊被吵）、
+  // 除錯模式接著板子（看的、聽的都是板子；預覽在背景跑，不能跟板子一起響）
+  const hz = state.mod._bp_buzzer_hz();
+  buzzerSet(state.failed || (dbg.on && dbg.port) ? 0 : hz);
+  if (hz > 0 && hz < BUZZ_QUIET_HZ && ++state.lowTone === LOW_TONE_FRAMES) renderWarn();   // 音太低：板子上會很小聲
   state.ticks++;
   if (state.ticks === 10 || state.ticks % 60 === 0) {   // 跑幾格後看有沒有「預覽正常、板子會出問題」的寫法
     const w = state.mod._bp_warn();
@@ -523,6 +773,7 @@ function frame(now) {
     ctx.roundRect(g.pad + x*(g.cell+g.gap), g.pad + y*(g.cell+g.gap), g.cell, g.cell, g.r);
     ctx.fill();
   }
+  stripDraw(state.mod);
   drawMeter();
   if (N === 8) artnetSend(fb);   // Art-Net 橋目前只收 8×8 畫面（192 bytes）
   state.frames++;
@@ -540,12 +791,13 @@ function precompileFirmware(code, bg = true) {
   if (fw.code === code && (fw.key || fw.pending)) return fw.pending || Promise.resolve({ ok:true, key:fw.key });
   fw.code = code; fw.key = null;
   setFw("韌體：背景編譯中…");
-  fw.pending = fetch("/compile/firmware" + (bg ? "?bg=1" : ""), { method:"POST", headers:{ "Content-Type":"text/plain; charset=utf-8" }, body:code })
+  fw.pending = api("/compile/firmware" + (bg ? "?bg=1" : ""), { method:"POST", headers:{ "Content-Type":"text/plain; charset=utf-8" }, body:code })
     .then(r => r.json())
     .then(j => {
       if (fw.code !== code) return j;      // 已經換了程式：舊的結果（含被取代的）不動狀態列，也不清掉新請求的 pending
       fw.pending = null;
       if (j.ok) { fw.key = j.key; setFw(`韌體：就緒（${j.cached ? "快取" : (j.ms/1000).toFixed(1)+"s"}，${Math.round(j.size/1024)}KB）`); }
+      else if (j.busy || j.needCode) { fw.code = null; setFw(""); }   // 編譯站忙、還沒輸入課堂代碼：不是程式有錯，下次再編
       else setFw(j.superseded ? "" : "韌體：編譯失敗（按⚡看詳情）");
       return j;
     })
@@ -563,7 +815,7 @@ async function run() {
   statusEl.textContent = "編譯中…";
   const tStart = performance.now();
   try {
-    const r = await fetch("/compile/preview?bg=1", {
+    const r = await api("/compile/preview?bg=1", {
       method: "POST",
       headers: { "Content-Type": "text/plain; charset=utf-8" },
       body: code,
@@ -572,8 +824,11 @@ async function run() {
     if (seq !== runSeq) return;
     const ms = Math.round(performance.now() - tStart);
     if (j.superseded) { statusEl.textContent = "預覽被另一個分頁的編譯取代了，再按一次 ▶ 執行"; return; }
+    if (j.needCode) { statusEl.textContent = "要輸入課堂代碼才能執行：再按一次 ▶ 執行"; return; }
+    if (j.busy) { statusEl.textContent = (j.error || "編譯站現在很忙") + "（▶ 執行）"; return; }
     if (!j.ok) {
       warnEl.hidden = true;
+      state.failed = true;                     // 舊的預覽照樣跑（畫面留著），但蜂鳴器不再出聲
       showCompileError(j.log || "（沒有錯誤訊息）");
       statusEl.textContent = `✗ 編譯失敗（${ms}ms）— 錯誤訊息在下方`;
       return;
@@ -582,6 +837,7 @@ async function run() {
     const mod = await factory({ print: previewPrint, printErr: previewPrint });   // 程式的 Serial 輸出（除錯模式顯示在文字視窗）
     if (seq !== runSeq) return;
     state.mod = mod;
+    state.failed = false;
     state.code = code;                       // 預覽正在跑的是哪一段程式（測試用來確認連點時只跑最後一個）
     state.ptr = mod._bp_framebuffer();
     state.n = mod._bp_width();
@@ -589,14 +845,15 @@ async function run() {
     state.interval = 1000 / state.target;
     state.t0 = performance.now();
     state.last = -Infinity;
-    state.ticks = 0; state.warn = 0;
+    state.ticks = 0; state.warn = 0; state.lowTone = 0;
     state.panelWarn = panelWarnText(state.n);
     renderWarn();
+    stripAttach(mod);                        // 這份程式有沒有燈條（#define STRIP）
     if (au.ac) mod._bp_audio_set_rate(TARGET_RATE);   // 重編後要重設取樣率
     statusEl.textContent = `✓ 執行中（往返 ${ms}ms）`;
     precompileFirmware(code);
   } catch (e) {
-    if (seq === runSeq) statusEl.textContent = "連線失敗——編譯站（run_station.ps1）有開嗎？";
+    if (seq === runSeq) statusEl.textContent = CLOUD ? "連線失敗——網路斷了嗎？等一下再按一次 ▶ 執行" : "連線失敗——編譯站（run_station.ps1）有開嗎？";
   } finally {
     if (seq === runSeq) runBtn.disabled = false;
   }
@@ -640,6 +897,7 @@ async function flash() {
     // 函式庫沒變時編譯站直接回快取，不會重編。
     fw.code = null;
     const j = await precompileFirmware(codeEl.value, false);
+    if (!j.ok && (j.busy || j.needCode)) { showLog(j.needCode ? "要輸入課堂代碼才能燒錄：再按一次「⚡ 燒錄到板子」" : (j.error || "編譯站現在很忙") + "（⚡ 燒錄到板子）"); setFw(""); return; }
     if (!j.ok) { showCompileError(j.log || "韌體編譯失敗"); setFw("韌體：編譯失敗"); return; }
     const binResp = await fetch("/firmware/" + j.key);
     if (!binResp.ok) { showLog("韌體下載失敗，請重試"); return; }
@@ -678,14 +936,18 @@ async function flash() {
 }
 
 // ── 除錯模式：右邊的燈板預覽換成序列埠的文字視窗 ─────────────────────────
-// 按「🔧 除錯模式」載入內建的「感應器檢查」程式（每 0.2 秒用 Serial 印出旋鈕、按鈕、傾斜、聲音的數值）。
+// 按「🔧 除錯模式」載入內建的「零件檢查」程式（firmware/panel_tests/sensors.ino）：燈板分成幾塊，一塊檢查一個零件
+// （四顆按鈕、旋鈕、麥克風、蜂鳴器、傾斜），試過沒問題變綠；每半秒用 Serial 印一行現況，哪裡沒接好也會印出來。
 // 燒錄完自動接上同一個序列埠，顯示板子印出來的文字；沒接板子時顯示預覽程式的 Serial 輸出。
 const debugBtn = document.getElementById("debug"), canvasEl = document.getElementById("m");
 const serialWrap = document.getElementById("serialwrap"), serialOut = document.getElementById("serialout");
 const serialStat = document.getElementById("serialstat"), serialConn = document.getElementById("serialconn");
-const dbg = { on:false, port:null, reader:null, piped:null, text:"" };
+const checkPanel = document.getElementById("checkpanel");
+const dbg = { on:false, port:null, reader:null, piped:null, text:"", partial:"", midline:false, checkTimer:0 };
 const SERIAL_KEEP = 30000;           // 文字視窗最多留這麼多字（約 150 行），舊的捲掉
 const ESPRESSIF_VID = 0x303A;        // ESP32-S3 內建 USB 序列埠的廠商代碼
+const CHECK_PREFIX = "零件檢查 ";     // 零件檢查程式每半秒印的那一行現況的開頭
+const CHECK_STALE_MS = 3000;         // 這麼久沒收到新的現況就把零件清單收起來（換了別的程式、板子不印了）
 
 function serialAppend(s) {
   const atBottom = serialOut.scrollTop + serialOut.clientHeight >= serialOut.scrollHeight - 30;
@@ -693,45 +955,135 @@ function serialAppend(s) {
   serialOut.textContent = dbg.text;
   if (atBottom) serialOut.scrollTop = serialOut.scrollHeight;   // 看舊的行時不要一直被拉回最下面
 }
+
+// ── 零件清單 ──
+// 零件檢查程式每半秒印一行現況，例如
+//   零件檢查 2/8｜按鈕 1 ✓ 2 … 3 … 4 …｜旋鈕 … 0.42（原始 1720，跳動 9，腳位接好）｜麥克風 … 音量 0.12｜傾斜 ✗ 沒偵測到｜蜂鳴器 ✓
+// 這一行不放進文字視窗（半秒一行，會把「哪裡沒接好」的訊息捲走），畫成釘在文字視窗上面的清單：一個零件一格，
+// ✓ 過關（綠）、✗ 沒接好（紅）、… 還沒試。看不懂的行（別的程式印的）回傳 null，照樣進文字視窗。
+// 每一段：記號前面是零件的名字，後面是現在的讀值或原因；括號裡的是細節（more），沒有記號的是「不算」的項目
+function checkParse(line) {
+  const m = /^零件檢查 (\d+)\/(\d+)｜(.+)$/.exec(line);
+  if (!m) return null;
+  const parts = [];
+  for (const seg of m[3].split("｜").map((s) => s.trim()).filter(Boolean)) {
+    const many = /^(\S+) ((?:\d+ [✓…✗] ?)+)$/.exec(seg);        // 「按鈕 1 ✓ 2 … 3 … 4 …」：一顆一格
+    if (many) {
+      for (const [, n, mark] of many[2].matchAll(/(\d+) ([✓…✗])/g)) parts.push({ name: many[1] + " " + n, mark, detail: "", more: "", full: many[1] + " " + n + " " + mark });
+      continue;
+    }
+    const at = seg.search(/[✓…✗]/);                               // 「旋鈕 … 0.42（原始…）」「傾斜 ✗ 沒偵測到」
+    if (at > 0) {
+      const rest = seg.slice(at + 1).trim(), paren = /（(.*)）/.exec(rest);
+      parts.push({ name: seg.slice(0, at).trim(), mark: seg[at], detail: rest.replace(/（.*）/, "").trim(), more: paren ? paren[1] : "", full: seg });
+    } else parts.push({ name: seg.replace(/（.*$/, ""), mark: "", detail: "", more: "", full: seg });   // 「傾斜（預覽沒有感測器，不算）」
+  }
+  return parts.length ? { done: Number(m[1]), total: Number(m[2]), parts } : null;
+}
+function checkRender(c) {
+  let title = checkPanel.querySelector(".ctitle"), chips = checkPanel.querySelector(".chips"), more = checkPanel.querySelector(".cdetail");
+  if (!title) {
+    title = checkPanel.appendChild(document.createElement("div")); title.className = "ctitle";
+    chips = checkPanel.appendChild(document.createElement("div")); chips.className = "chips";
+    more = checkPanel.appendChild(document.createElement("div")); more.className = "cdetail";
+  }
+  // 標明是誰的：預覽的 7／7 不代表板子過關，要燒進板子、看到「板子的」才算
+  title.textContent = `${dbg.port ? "板子" : "預覽"}的零件檢查：${c.done}／${c.total} 項過關` + (c.total > 0 && c.done >= c.total ? "　★ 全部過關" : "");
+  while (chips.children.length > c.parts.length) chips.lastChild.remove();
+  c.parts.forEach((p, i) => {          // 格子留著只換內容：滑鼠停在上面看細節時不會一直閃
+    const el = chips.children[i] || chips.appendChild(document.createElement("span"));
+    el.className = "chip" + (p.mark === "✓" ? " ok" : p.mark === "✗" ? " bad" : p.mark ? "" : " skip");
+    el.dataset.name = p.name;
+    el.textContent = p.mark ? `${p.mark} ${p.name}${p.detail ? " " + p.detail : ""}` : p.full;
+    el.title = p.full;
+  });
+  // 括號裡的細節（旋鈕的原始讀值、跳動、腳位）放在下面一行小字：查「讀值亂跳」時要一直看著它，滑鼠提示不會跟著更新
+  more.textContent = c.parts.filter((p) => p.more).map((p) => `${p.name}：${p.more}`).join("｜");
+  more.hidden = !more.textContent;
+  checkPanel.hidden = false;
+  clearTimeout(dbg.checkTimer);
+  dbg.checkTimer = setTimeout(checkHide, CHECK_STALE_MS);
+}
+function checkHide() {
+  clearTimeout(dbg.checkTimer);
+  checkPanel.hidden = true;
+}
+// 板子或預覽印出來的文字先經過這裡：一行一行看，零件檢查的現況畫成清單，其他的照樣進文字視窗。
+// 還沒換行的半行：可能是現況那一行的開頭就先留著等它收完；不是的話馬上顯示（學員的程式可能用 Serial.print 不換行）
+function serialFeed(s) {
+  let out = "", buf = dbg.partial + s;
+  dbg.partial = "";
+  for (let nl; (nl = buf.indexOf("\n")) >= 0; buf = buf.slice(nl + 1)) {
+    const line = buf.slice(0, nl);
+    const c = dbg.midline ? null : checkParse(line.replace(/\r$/, ""));
+    dbg.midline = false;
+    if (c) checkRender(c); else out += line + "\n";
+  }
+  if (buf) {
+    const maybeStatus = !dbg.midline && buf.length < 600 && (CHECK_PREFIX.startsWith(buf) || buf.startsWith(CHECK_PREFIX));
+    if (maybeStatus) dbg.partial = buf;
+    else { out += buf; dbg.midline = true; }
+  }
+  if (out) serialAppend(out);
+}
+function serialFeedReset() { dbg.partial = ""; dbg.midline = false; checkHide(); }
 // 預覽程式的 Serial 輸出（emcc 的 stdout）：除錯模式沒接板子時顯示在文字視窗，其他時候照舊印到開發者工具
 function previewPrint(s) {
-  if (dbg.on && !dbg.port) serialAppend(s + "\n");
+  if (dbg.on && !dbg.port) serialFeed(s + "\n");
   else console.log(s);
 }
 function serialStatus() {
-  serialStat.textContent = dbg.port ? "顯示：板子印出來的文字"
+  // 接著板子時，預覽用的旋鈕、按鈕那一排收起來：畫面上看的是板子，點那一排板子不會有反應
+  document.getElementById("inputs").hidden = dbg.on && !!dbg.port;
+  // 除錯模式的燈板預覽：還沒接板子時縮小留在上面（零件檢查的說明講的是「燈板上」的八塊，要看得到）；接著板子就收起來（看真的燈板）
+  canvasEl.hidden = dbg.on && !!dbg.port;
+  canvasEl.parentElement.classList.toggle("dbg", dbg.on);
+  serialStat.textContent = dbg.port ? "顯示：板子印出來的文字（要試零件請直接按板子上的按鈕、轉板子上的旋鈕）"
     : "顯示：預覽程式印出來的文字。按「⚡ 燒錄到板子」燒完會自動接上板子；已經燒好的板子按「連線板子」";
   serialConn.textContent = dbg.port ? "中斷" : "連線板子";
+  serialConn.disabled = !!dbg.closing;             // 序列埠還在關：等它關好才能再連
 }
 async function serialOpen(port) {
   await port.open({ baudRate: 115200 });
   dbg.port = port;
   serialStatus();
+  serialFeedReset();                 // 從這裡開始看板子印的：預覽那邊的零件清單收起來
   serialAppend("── 接上板子 ──\n");
   const decoder = new TextDecoderStream();
   dbg.piped = port.readable.pipeTo(decoder.writable).catch(() => {});
   const reader = dbg.reader = decoder.readable.getReader();
   (async () => {
     try {
-      for (;;) { const { value, done } = await reader.read(); if (done) break; if (value) serialAppend(value); }
+      for (;;) { const { value, done } = await reader.read(); if (done) break; if (value && dbg.port === port) serialFeed(value); }
     } catch (_) {}
     if (dbg.port === port) {         // 不是按「中斷」：板子被拔掉或重開了
       dbg.port = null; dbg.reader = null;
-      try { await port.close(); } catch (_) {}
+      // 先收清單、丟掉板子收到一半的那一行，再等序列埠關好：關的那段空檔裡預覽會印字，不能跟板子的半行接在一起
+      serialFeedReset();
       serialAppend("── 板子斷線了 ──\n");
       serialStatus();
+      try { await port.close(); } catch (_) {}
     }
   })();
 }
 async function serialDisconnect() {
+  if (dbg.closing) return dbg.closing;   // 已經在關了：等同一次關完（燒錄前、離開除錯模式時也會走到這裡）
   const port = dbg.port;
   if (!port) return;
+  const reader = dbg.reader, piped = dbg.piped;
   dbg.port = null;
-  try { await dbg.reader.cancel(); } catch (_) {}
-  try { await dbg.piped; } catch (_) {}
-  try { await port.close(); } catch (_) {}
-  dbg.reader = null;
-  serialStatus();
+  serialFeedReset();                 // 板子的零件清單不再更新了：收起來（接下來看的是預覽印的）
+  // 序列埠關好之前「連線板子」先不能按：連點兩下「中斷」的第二下會去開還在關的同一個埠，開不起來就跳出選序列埠的視窗
+  dbg.closing = (async () => {
+    try { await reader.cancel(); } catch (_) {}
+    try { await piped; } catch (_) {}
+    try { await port.close(); } catch (_) {}
+    if (dbg.reader === reader) dbg.reader = null;
+    dbg.closing = null;
+    serialStatus();
+  })();
+  serialStatus();                    // 按鈕、預覽的旋鈕按鈕與燈板馬上換回來，不用等序列埠關完
+  return dbg.closing;
 }
 // 之前允許過的 ESP32 序列埠：不用再跳視窗選
 async function grantedBoardPorts() {
@@ -754,29 +1106,39 @@ async function serialReconnectAfterFlash() {
   }
   if (dbg.on && !dbg.port) serialStat.textContent = "沒有自動接上：按「連線板子」選板子的序列埠";
 }
+// 把「零件檢查」放進編輯區（還沒執行）。載入失敗回 false
+async function loadCheckSketch() {
+  let code;
+  try {
+    const r = await fetch("/debug-sketch");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    code = await r.text();
+  } catch (e) { statusEl.textContent = "載入零件檢查程式失敗：" + e.message; return false; }
+  // 跟著目前的燈板尺寸。原本的程式有寫 #define PORT B（燈板接在 B 接口；舊板子的 C 也算）就一起帶過來：
+  // 零件檢查要看燈板上的八塊，接口不對的話燒進去燈板全黑，會以為板子壞了
+  const pm = codeEl.value.match(/^[ \t]*#[ \t]*define[ \t]+PORT[ \t]+([A-Ca-c])\b/m);
+  const port = pm && pm[1].toUpperCase() !== "A" ? pm[1].toUpperCase() : "";
+  const eol = code.includes("\r\n") ? "\r\n" : "\n";
+  setCode(code.replace(/^([ \t]*#define[ \t]+PANEL[ \t]+)\d+(.*)$/m, (all, head, tail) => head + size + tail + (port ? eol + "#define PORT " + port : "")), null);
+  dbg.code = codeEl.value;           // 編輯區現在是原封不動的零件檢查：切換燈板尺寸時要跟著換成新尺寸的（見 switchSize）
+  return true;
+}
 async function setDebug(on) {
   if (on) {
     // 程式改過時先問：按「取消」保留目前的程式，只把右邊換成文字視窗（看學員自己用 Serial 印的東西）
-    const load = !isDirty() || confirm("載入「感應器檢查」會蓋掉目前的程式碼，確定嗎？\n" +
+    const load = !isDirty() || confirm("載入「零件檢查」會蓋掉目前的程式碼，確定嗎？\n" +
       "（按「取消」：保留目前的程式，只把右邊換成文字視窗，看它用 Serial 印出來的東西）");
-    if (load) {
-      let code;
-      try {
-        const r = await fetch("/debug-sketch");
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        code = await r.text();
-      } catch (e) { statusEl.textContent = "載入感應器檢查程式失敗：" + e.message; return; }
-      setCode(code.replace(/^([ \t]*#define[ \t]+PANEL[ \t]+)\d+/m, "$1" + size), null);   // 跟著目前的燈板尺寸
-    }
+    if (load && !(await loadCheckSketch())) return;
     dbg.on = true; dbg.text = ""; serialOut.textContent = "";
+    serialFeedReset();
     if (load) run();
   } else {
     await serialDisconnect();
     dbg.on = false;
   }
   debugBtn.classList.toggle("on", dbg.on);
-  canvasEl.hidden = dbg.on; hud.hidden = dbg.on; serialWrap.hidden = !dbg.on;
-  serialStatus();
+  hud.hidden = dbg.on; serialWrap.hidden = !dbg.on;
+  serialStatus();                    // 燈板預覽、旋鈕按鈕那一排要不要顯示也在這裡決定
 }
 debugBtn.addEventListener("click", () => setDebug(!dbg.on));
 serialConn.addEventListener("click", serialConnectClick);
@@ -785,7 +1147,7 @@ window.__bpDbg = dbg;   // 測試用
 
 // ── 範例 ──────────────────────────────────────────────────────────
 // 清單與內容來自編譯站的 examples/8x8、examples/16x16：子資料夾＝分類（分組顯示），檔名＝卡片標題。
-// 學員（或他的 AI）新增的檔案重新整理頁面就會出現，縮圖由編譯站自動產生。換範例不必改這個頁面。
+// 學員（或他的 AI）新增的檔案重新整理頁面就會出現，縮圖由這個頁面算（見下面「自己的範例的縮圖」）。換範例不必改這個頁面。
 const galleryEl = document.getElementById("gallery");
 const cardsEl = document.getElementById("cards");
 let galleryList = [];       // 目前尺寸的範例（編譯站已依分類排好，「我的範例」在最後）
@@ -807,9 +1169,139 @@ function renderExButtons() {
   }
 }
 
+// ── 自己的範例存在哪裡（依部署目標）────────────────────────────────────
+// serverStore（開發版、離線版）：編譯站的 examples/<尺寸>/我的範例，就是這台電腦上的資料夾，AI 也可以直接把檔案寫進去。
+// browserStore（雲端版）：這個瀏覽器的 IndexedDB。編譯站是整班共用的，不存任何人的東西。
+//   換瀏覽器、換電腦、清除網站資料就看不到了——要帶走請按「⬇ 匯出 Arduino 資料夾」，之後可以「⬆ 匯入 zip」放回來。
+// 兩個的用法一樣（下面的新增、存回、刪除、匯入、縮圖都只呼叫 store，不管是哪一個）：
+//   add({ size, name, code, overwrite })  → { ok:true, id } ｜ { ok:false, exists:true }（同名的已經有了）｜ { ok:false, error }
+//   update(ex, code)、remove(ex)          → { ok:true } ｜ { ok:false, error }
+//   code(ex)                              → 那個範例的程式（拿不到就丟錯誤）
+//   mine(size)                            → 要接在編譯站給的清單後面的範例（serverStore 的已經在清單裡了，回空的）
+//   saveThumb(ex, canvas, url)            → 縮圖算好了，存起來下次直接用
+const serverStore = {
+  async add({ size, name, code, overwrite = false }) {
+    const r = await api("/examples", { method: "POST", headers: { "Content-Type": "application/json" },
+                                       body: JSON.stringify({ size, name, code, overwrite }) });
+    const j = await jsonOf(r);
+    if (r.status === 409) return { ok: false, exists: true };
+    return j.ok ? { ok: true, id: j.id } : { ok: false, error: j.error || "HTTP " + r.status };
+  },
+  async update(ex, code) {
+    const r = await api("/example?id=" + encodeURIComponent(ex.id), { method: "PUT", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: code });
+    const j = await jsonOf(r);
+    return j.ok ? { ok: true } : { ok: false, error: j.error || "HTTP " + r.status };
+  },
+  async remove(ex) {
+    const r = await api("/example?id=" + encodeURIComponent(ex.id), { method: "DELETE" });
+    const j = await jsonOf(r);
+    return j.ok ? { ok: true } : { ok: false, error: j.error || "HTTP " + r.status };
+  },
+  async code(ex) {
+    const r = await fetch("/example?id=" + encodeURIComponent(ex.id));
+    if (!r.ok) throw new Error(r.status);
+    return r.text();
+  },
+  async mine() { return []; },
+  saveThumb(ex, canvas) {           // 上傳給編譯站存著；失敗（程式剛好又改了、編譯站關了）不影響這一頁的顯示
+    canvas.toBlob((blob) => {
+      if (blob) api("/thumb?id=" + encodeURIComponent(ex.id) + "&k=" + ex.thumbKey, { method: "PUT", headers: { "Content-Type": "image/png" }, body: blob }).catch(() => {});
+    }, "image/png");
+  },
+};
+
+// IndexedDB 裡一筆＝{ key: "<尺寸>:<名稱>", size, name, code, updated（存的時間）, thumb（縮圖的 data: 網址）, thumbFor（那張縮圖是哪一次存的程式）}
+const IDB_NAME = "babit", IDB_STORE = "examples";
+const NO_IDB = "這個瀏覽器不讓網頁存資料（是不是開了無痕視窗？）。範例存不起來：請用一般的視窗開，或按「⬇ 匯出 Arduino 資料夾」把程式存成檔案";
+let idbOpening = null;
+function idbOpen() {
+  if (!idbOpening) idbOpening = new Promise((resolve, reject) => {
+    const q = indexedDB.open(IDB_NAME, 1);
+    q.onupgradeneeded = () => q.result.createObjectStore(IDB_STORE, { keyPath: "key" });
+    q.onsuccess = () => resolve(q.result);
+    q.onerror = q.onblocked = () => reject(q.error || new Error("IndexedDB 打不開"));
+  });
+  return idbOpening;
+}
+async function idbDo(mode, fn) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, mode), q = fn(tx.objectStore(IDB_STORE));
+    tx.oncomplete = () => resolve(q ? q.result : undefined);
+    tx.onerror = tx.onabort = () => reject(tx.error || new Error("IndexedDB 存取失敗"));
+  });
+}
+const LOCAL = "local:";                                   // 存在瀏覽器裡的範例，id 是 local:<尺寸>:<名稱>（跟編譯站的範例 id 分得開）
+const localKey = (ex) => ex.id.slice(LOCAL.length);
+const localThumbKey = (rec) => LOCAL + rec.key + ":" + rec.updated;
+// 卡片上的說明：檔頭註解裡的 // @desc 一句話（規則跟編譯站 catalog.js 的 exampleMeta 一樣）
+function descOf(code) {
+  let desc = "";
+  for (const line of String(code).split(/\r?\n/)) {
+    const m = line.match(/^\s*\/\/\s?(.*)$/);
+    if (!m) break;
+    const d = m[1].trim().match(/^@desc\s+(.*)$/);
+    if (d) desc = d[1].trim();
+  }
+  return desc;
+}
+// 名稱能不能用、燈板尺寸對不對，還是問編譯站（跟離線版同一套規則，POST /examples/check 只檢查不存），過了才存進瀏覽器
+async function checkExample(size, name, code) {
+  const j = await jsonOf(await api("/examples/check", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                         body: JSON.stringify({ size, name, code }) }));
+  return j.ok ? { ok: true, name: j.name, code: j.code } : { ok: false, error: j.error || "編譯站沒有回應，請再試一次" };
+}
+const browserStore = {
+  async add({ size, name, code, overwrite = false }) {
+    const c = await checkExample(size, name, code);
+    if (!c.ok) return c;
+    const key = size + ":" + c.name;
+    try {
+      if (!overwrite && await idbDo("readonly", (s) => s.get(key))) return { ok: false, exists: true };
+      await idbDo("readwrite", (s) => s.put({ key, size, name: c.name, code: c.code, updated: Date.now(), thumb: null, thumbFor: 0 }));
+    } catch (_) { return { ok: false, error: NO_IDB }; }
+    return { ok: true, id: LOCAL + key };
+  },
+  async update(ex, code) {
+    let rec;
+    try { rec = await idbDo("readonly", (s) => s.get(localKey(ex))); } catch (_) { return { ok: false, error: NO_IDB }; }
+    if (!rec) return { ok: false, error: "找不到這個範例（是不是在別的分頁刪掉了？）。要留著請按「＋ 新增範例」再存一次" };
+    const c = await checkExample(rec.size, rec.name, code);
+    if (!c.ok) return c;
+    try { await idbDo("readwrite", (s) => s.put(Object.assign(rec, { code: c.code, updated: Date.now() }))); } catch (_) { return { ok: false, error: NO_IDB }; }
+    return { ok: true };
+  },
+  async remove(ex) {
+    try { await idbDo("readwrite", (s) => s.delete(localKey(ex))); } catch (_) { return { ok: false, error: NO_IDB }; }
+    return { ok: true };
+  },
+  async code(ex) {
+    if (!ex.local) return serverStore.code(ex);            // 官方範例還是跟編譯站拿
+    const rec = await idbDo("readonly", (s) => s.get(localKey(ex)));
+    if (!rec) throw new Error("找不到這個範例");
+    return rec.code;
+  },
+  async mine(size) {
+    let all;
+    try { all = await idbDo("readonly", (s) => s.getAll()); } catch (_) { return []; }
+    return all.filter((r) => r.size === size).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)).map((r) => ({
+      id: LOCAL + r.key, title: r.name.replace(/^\d+[_\s.-]+/, "") || r.name, desc: descOf(r.code), category: "我的範例", mine: true, local: true,
+      thumbKey: localThumbKey(r), thumbUrl: r.thumb && r.thumbFor === r.updated ? r.thumb : null }));
+  },
+  async saveThumb(ex, canvas, url) {                       // 縮圖跟範例存在一起；這期間程式又改過（updated 不同）就不存
+    try {
+      const rec = await idbDo("readonly", (s) => s.get(localKey(ex)));
+      if (rec && localThumbKey(rec) === ex.thumbKey) await idbDo("readwrite", (s) => s.put(Object.assign(rec, { thumb: url, thumbFor: rec.updated })));
+    } catch (_) {}
+  },
+};
+let store = serverStore;               // 開頁問到是雲端版就換成 browserStore（見最下面的開頁流程）
+
 async function loadGallery() {
-  try { galleryList = await (await fetch("/examples?size=" + size)).json(); } catch (_) { galleryList = []; }
-  if (!Array.isArray(galleryList)) galleryList = [];
+  let list;
+  try { list = await (await fetch("/examples?size=" + size)).json(); } catch (_) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  galleryList = list.concat(await store.mine(size));
   renderGallery();
 }
 
@@ -849,45 +1341,198 @@ function makeCard(ex) {
   b.dataset.id = ex.id;
   const th = document.createElement("div");
   th.className = "thumb";
-  if (ex.thumb) {
-    // 讀圖的寬高推出格數（每格正方形），不必在清單裡另外標；讀不到（程式有錯、還在產生）就留黑底
+  const show = (src, frames) => {
+    th.style.backgroundImage = "url(" + src + ")";
+    th.style.setProperty("--frames", frames);
+  };
+  if (ex.thumbKey && thumbMade.get(ex.thumbKey)) show(thumbMade.get(ex.thumbKey), THUMB_FRAMES);    // 這一頁剛算過的直接用
+  else if (ex.thumbUrl) show(ex.thumbUrl, THUMB_FRAMES);                                            // 存在瀏覽器裡的範例：縮圖跟它存在一起
+  else if (ex.local) queueThumb(ex).then((url) => { if (url) show(url, THUMB_FRAMES); });           // 還沒算過：在這裡算
+  else if (ex.thumb) {
+    // 讀圖的寬高推出格數（每格正方形），不必在清單裡另外標。網址帶上 thumbKey：程式改了就是另一張圖
+    const src = ex.thumb + (ex.thumbKey ? "&k=" + ex.thumbKey : "");
     const im = new Image();
-    im.onload = () => {
-      th.style.backgroundImage = "url(" + ex.thumb + ")";
-      th.style.setProperty("--frames", Math.max(1, Math.round(im.naturalWidth / im.naturalHeight)));
-    };
-    im.src = ex.thumb;
+    im.onload = () => show(src, Math.max(1, Math.round(im.naturalWidth / im.naturalHeight)));
+    // 編譯站沒有這張圖（自己的範例還沒算過縮圖）：在這裡算。算不出來（程式有錯、卡住）就留黑底
+    im.onerror = () => { if (ex.thumbKey) queueThumb(ex).then((url) => { if (url) show(url, THUMB_FRAMES); }); };
+    im.src = src;
   }
   const nm = document.createElement("div");
   nm.className = "cname";
   nm.textContent = ex.title;
-  const ds = document.createElement("div");
-  ds.className = "cdesc";
-  ds.textContent = ex.desc || "";
-  b.append(th, nm, ds);
+  b.title = ex.title + (ex.desc ? "\n" + ex.desc : "");   // 卡片上只放標題：說明（程式檔頭的 @desc）滑鼠移上去才看得到
+  b.append(th, nm);
   b.addEventListener("click", () => pickExample(ex));
   return b;
 }
 
+// ── 自己的範例的縮圖：工具頁自己算 ─────────────────────────────────
+// 編譯站不執行學員的程式：程式可以夾帶 JavaScript（別人給的 zip、網路上抄來的都可能有），在編譯站跑等於讓它在這台電腦上
+// 執行任意指令。所以沒有官方縮圖的範例由這裡算：請編譯站編譯 → 在沙箱裡把預覽跑一遍、取 28 格（取法跟 station/thumb.js 一樣）
+// → 排成一張圖顯示，並上傳給編譯站存著（下次開頁直接用）。
+// 沙箱＝sandbox 的 iframe（不給 allow-same-origin：碰不到這個頁面，它送出的請求編譯站也不收）裡再開一個 Worker
+// （程式卡死時整個停掉，不會卡住頁面）。沙箱傳回來的東西只當成像素用，格式不對就丟掉。
+const THUMB_FRAMES = 28, THUMB_LOOP = 2.8, THUMB_FPS = 60, THUMB_TIMEOUT = 5000;
+const THUMB_WORKER_SRC = `
+onmessage = async (e) => {
+  const { js, loop, FRAMES, FPS } = e.data;
+  try {
+    const create = new Function(js + "\\nreturn createBatoPixel;")();
+    const m = await create({ print() {}, printErr() {} });
+    const N = m._bp_width(), ptr = m._bp_framebuffer(), bytes = N * N * 3;
+    const at = Array.from({ length: FRAMES + 1 }, (_, k) => Math.round((2 + k / FRAMES) * loop * FPS) + 1);
+    const shots = [];
+    for (let i = 0, next = 0; next < at.length; i++) {
+      m._bp_tick(i / FPS);
+      if (i === at[next]) { shots.push(m.HEAPU8.slice(ptr, ptr + bytes)); next++; }
+    }
+    shots.pop();
+    postMessage({ ok: true, N, shots }, shots.map((s) => s.buffer));
+  } catch (err) { postMessage({ ok: false }); }
+};`;
+const THUMB_FRAME_SRC = `<!doctype html><script>
+const SRC = ${JSON.stringify(THUMB_WORKER_SRC)};
+addEventListener("message", (e) => {
+  if (e.source !== parent) return;
+  const w = new Worker(URL.createObjectURL(new Blob([SRC], { type: "text/javascript" })));
+  let over = false;
+  const done = (msg) => { if (over) return; over = true; clearTimeout(t); w.terminate(); parent.postMessage(Object.assign({ id: e.data.id }, msg), "*"); };
+  const t = setTimeout(() => done({ ok: false }), e.data.timeout);
+  w.onmessage = (m) => done(m.data);
+  w.onerror = () => done({ ok: false });
+  w.postMessage(e.data);
+});
+parent.postMessage({ ready: true }, "*");
+<\/script>`;
+const thumbMade = new Map();           // thumbKey → 算好的圖（data: 網址）
+// 確定算不出來的（程式編不過、卡住、畫面格式不對）記在瀏覽器裡：之後開頁不再自動重跑那份程式。
+// 鑰匙跟著程式內容變，程式改了自然會再試一次。一時的問題（編譯站沒回應）不記
+const THUMB_FAIL_KEY = "babit.thumbFail";
+const thumbFailed = new Set();
+try { for (const k of JSON.parse(localStorage.getItem(THUMB_FAIL_KEY) || "[]").slice(-300)) if (typeof k === "string") thumbFailed.add(k); } catch (_) {}
+function rememberThumbFail(key) {
+  thumbFailed.add(key);
+  try { localStorage.setItem(THUMB_FAIL_KEY, JSON.stringify([...thumbFailed].slice(-300))); } catch (_) {}
+}
+const thumbJobs = new Map();           // thumbKey → 進行中的工作
+const thumbWaiting = new Map();        // 送進沙箱的工作編號 → 等結果的人
+let thumbBox = null, thumbBoxReady = null, thumbSeq = 0, thumbChain = Promise.resolve();
+
+function thumbSandbox() {
+  if (!thumbBoxReady) thumbBoxReady = new Promise((resolve) => {
+    thumbBox = document.createElement("iframe");
+    thumbBox.setAttribute("sandbox", "allow-scripts");
+    thumbBox.style.display = "none";
+    thumbBox.srcdoc = THUMB_FRAME_SRC;
+    addEventListener("message", (e) => {
+      if (e.source !== thumbBox.contentWindow || !e.data) return;
+      if (e.data.ready) { resolve(); return; }
+      const wait = thumbWaiting.get(e.data.id);
+      if (wait) { thumbWaiting.delete(e.data.id); wait(e.data); }
+    });
+    document.body.appendChild(thumbBox);
+  });
+  return thumbBoxReady;
+}
+
+// 一次算一張（照卡片出現的順序）。回傳 data: 網址；沒有圖就回 null（確定算不出來）或 undefined（這次沒算成，下次再試）
+function queueThumb(ex) {
+  const key = ex.thumbKey;
+  if (thumbMade.has(key)) return Promise.resolve(thumbMade.get(key));
+  if (thumbFailed.has(key)) return Promise.resolve(null);
+  if (!thumbJobs.has(key)) {
+    const job = thumbChain.then(() => makeThumb(ex)).catch(() => undefined).then((url) => {
+      if (url) thumbMade.set(key, url);
+      else if (url === null) rememberThumbFail(key);
+      thumbJobs.delete(key);
+      return url;
+    });
+    thumbChain = job;
+    thumbJobs.set(key, job);
+  }
+  return thumbJobs.get(key);
+}
+
+async function makeThumb(ex) {
+  let code;
+  try { code = await store.code(ex); } catch (_) { return undefined; }
+  // 不帶 bg：照順序編，不會被學員按執行的預覽擠掉（thumb=1 只是標明用途，編譯站不看）
+  const r = await (await api("/compile/preview?thumb=1", { method: "POST", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: code })).json();
+  if (!r.ok) return r.log ? null : undefined;          // 有編譯訊息＝程式編不過（確定算不出來）；其他（編譯站忙、還沒輸入課堂代碼）下次再試
+  const loop = parseFloat((code.match(/^\s*\/\/\s*@loop\s+([\d.]+)/m) || [])[1]) || THUMB_LOOP;
+  await thumbSandbox();
+  const id = ++thumbSeq;
+  const out = await new Promise((resolve) => {
+    thumbWaiting.set(id, resolve);
+    setTimeout(() => { if (thumbWaiting.delete(id)) resolve(null); }, THUMB_TIMEOUT + 3000);      // 沙箱自己沒回話時的保險
+    thumbBox.contentWindow.postMessage({ id, js: r.js, loop, FRAMES: THUMB_FRAMES, FPS: THUMB_FPS, timeout: THUMB_TIMEOUT }, "*");
+  });
+  // 沙箱裡跑的是學員的程式，傳回來的東西不能信：只收「28 格、每格 N×N×3 個位元組」
+  const N = out && out.ok === true && (out.N === 8 || out.N === 16) ? out.N : 0;
+  if (!N || !Array.isArray(out.shots) || out.shots.length !== THUMB_FRAMES ||
+      !out.shots.every((s) => s instanceof Uint8Array && s.length === N * N * 3)) return null;
+  const cv = document.createElement("canvas");
+  cv.width = N * THUMB_FRAMES;
+  cv.height = N;
+  const g = cv.getContext("2d"), img = g.createImageData(cv.width, N);
+  out.shots.forEach((fb, i) => {
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const s = (y * N + x) * 3, d = (y * cv.width + i * N + x) * 4;
+      img.data[d] = fb[s]; img.data[d + 1] = fb[s + 1]; img.data[d + 2] = fb[s + 2]; img.data[d + 3] = 255;
+    }
+  });
+  g.putImageData(img, 0, 0);
+  const url = cv.toDataURL("image/png");
+  store.saveThumb(ex, cv, url);         // 存起來下次直接用（離線版上傳給編譯站，雲端版存在瀏覽器）
+  return url;
+}
+
 function setCode(code, id) {
+  pickSeq++;                   // 還在路上的「載入範例」作廢（例如點了範例又馬上匯入、開除錯模式）：晚到的不會蓋掉這次放進來的程式
   codeEl.value = code;
   loadedCode = codeEl.value;   // 用編輯區讀回來的內容比對：textarea 會把 CRLF 換成 LF（學員電腦用 git 取出的範例是 CRLF）
   currentId = id;
   for (const c of cardsEl.querySelectorAll(".card")) c.classList.toggle("on", c.dataset.id === id);
   renderExButtons();
+  saveDraftSoon();
 }
 
+// ── 草稿（雲端版）：編輯區的程式隨時存一份在這個瀏覽器裡 ─────────────────────
+// 雲端版的程式只在這個分頁裡：重新整理、不小心關掉分頁、電腦睡著被瀏覽器收掉，再開要還在。
+// 存的是編輯區的程式、它是從哪個範例來的（卡片亮燈、有沒有改過都照舊）。開發版、離線版不做這件事（跟以前一樣開頁就載入第一個範例）。
+const DRAFT_KEY = "babit.draft";
+let draftTimer = null;
+const writeDraft = () => { if (CLOUD) remember(DRAFT_KEY, JSON.stringify({ code: codeEl.value, loaded: loadedCode, id: currentId })); };
+function saveDraftSoon() {
+  if (!CLOUD) return;
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(writeDraft, 400);
+}
+function readDraft() {
+  try {
+    const d = JSON.parse(stored(DRAFT_KEY) || "null");
+    return d && typeof d.code === "string" && d.code.trim() ? d : null;
+  } catch (_) { return null; }
+}
+// 分頁被收起來、關掉之前馬上存（不等那 0.4 秒）
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { clearTimeout(draftTimer); writeDraft(); } });
+addEventListener("pagehide", () => { clearTimeout(draftTimer); writeDraft(); });
+
+// 連點幾個範例時只有最後點的那個有用：前面點的比較晚才拿到程式（網路慢、電腦忙）也不會蓋掉後面點的
+let pickSeq = 0;
 async function pickExample(ex, force = false) {
   if (!force && isDirty() && !confirm("載入「" + ex.title + "」會蓋掉目前的程式碼，確定嗎？")) return;
+  const seq = ++pickSeq;
   let code;
-  try {
-    const r = await fetch("/example?id=" + encodeURIComponent(ex.id));
-    if (!r.ok) throw new Error(r.status);
-    code = await r.text();
-  } catch (e) {
-    statusEl.textContent = "載入範例失敗：" + e.message;
+  try { code = await store.code(ex); }
+  catch (e) {
+    if (seq === pickSeq) statusEl.textContent = "載入範例失敗：" + e.message;
     return;
   }
+  if (seq !== pickSeq) return;
+  // 除錯模式開著時點了範例卡片：就是要看那個範例了，先離開除錯模式。不然「除錯模式」的燈還亮著、編輯區卻已經是範例，
+  // 這時按燒錄燒進去的不是零件檢查（2026-11-24 實機踩到）。force＝程式自己載入的（開頁、切換尺寸），不算
+  if (dbg.on && !force) { await setDebug(false); if (seq !== pickSeq) return; }
   setCode(code, ex.id);
   run();
 }
@@ -917,6 +1562,9 @@ async function switchSize(n) {
     renderWarn();
     return;
   }
+  // 除錯模式、編輯區是原封不動的零件檢查：換成新尺寸的零件檢查，不是換成範例
+  // （不然「除錯模式」還亮著，按燒錄卻燒進彩虹流動，板子上看不到零件檢查，文字視窗也沒有東西）
+  if (dbg.on && codeEl.value === dbg.code) { if (await loadCheckSketch()) run(); return; }
   await loadFirstExample();
 }
 
@@ -928,26 +1576,25 @@ function toggleAddPanel(open) {
   addBtn.classList.toggle("on", open);
   exErr.hidden = true;
   if (open) {
-    exNote.textContent = `會把上面編輯區的程式存到「${size}×${size}／我的範例」，名稱就是卡片上的標題，縮圖會自動產生。官方範例不會被改到。`;
+    exNote.textContent = `會把上面編輯區的程式存到「${size}×${size}／我的範例」，名稱就是卡片上的標題，縮圖會自動產生。官方範例不會被改到。` +
+      (CLOUD ? "範例存在這台電腦的這個瀏覽器裡：換電腦、換瀏覽器就看不到，要帶走請按「⬇ 匯出 Arduino 資料夾」。" : "");
     exName.focus();
   }
 }
 async function saveExample(overwrite = false) {
   const name = exName.value.trim();
-  let r, j;
-  try {
-    r = await fetch("/examples", { method: "POST", headers: { "Content-Type": "application/json" },
-                                   body: JSON.stringify({ size, name, code: codeEl.value, overwrite }) });
-    j = await r.json();
-  } catch (e) { exErr.textContent = "存檔失敗：" + e.message; exErr.hidden = false; return; }
-  if (r.status === 409 && !overwrite) {
+  let s;
+  try { s = await store.add({ size, name, code: codeEl.value, overwrite }); }
+  catch (e) { exErr.textContent = "存檔失敗：" + e.message; exErr.hidden = false; return; }
+  if (s.exists && !overwrite) {
     if (confirm(`「${name}」已經有了，要用目前的程式覆蓋嗎？`)) return saveExample(true);
     return;
   }
-  if (!j.ok) { exErr.textContent = j.error || "存檔失敗"; exErr.hidden = false; return; }
+  if (!s.ok) { exErr.textContent = s.error || "存檔失敗"; exErr.hidden = false; return; }
   toggleAddPanel(false);
   loadedCode = codeEl.value;
-  currentId = j.id;
+  currentId = s.id;
+  saveDraftSoon();
   await loadGallery();
   statusEl.textContent = `✓ 已存成範例「${name}」`;
 }
@@ -960,14 +1607,12 @@ exName.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDe
 async function updateExample() {
   const ex = currentExample();
   if (!ex || !ex.mine) return;
-  let r, j;
-  try {
-    r = await fetch("/example?id=" + encodeURIComponent(ex.id),
-      { method: "PUT", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: codeEl.value });
-    j = await r.json();
-  } catch (e) { statusEl.textContent = "存回失敗：" + e.message; return; }
-  if (!j.ok) { statusEl.textContent = "存回失敗：" + (j.error || r.status); return; }
+  let s;
+  try { s = await store.update(ex, codeEl.value); }
+  catch (e) { statusEl.textContent = "存回失敗：" + e.message; return; }
+  if (!s.ok) { statusEl.textContent = "存回失敗：" + s.error; return; }
   loadedCode = codeEl.value;
+  saveDraftSoon();
   await loadGallery();                       // 卡片縮圖換成新程式的
   statusEl.textContent = `✓ 已存回「${ex.title}」`;
 }
@@ -975,18 +1620,19 @@ async function deleteExample() {
   const ex = currentExample();
   if (!ex || !ex.mine) return;
   if (!confirm(`要刪除「${ex.title}」嗎？刪掉就找不回來（程式會留在編輯區）。`)) return;
-  let r, j;
-  try { r = await fetch("/example?id=" + encodeURIComponent(ex.id), { method: "DELETE" }); j = await r.json(); }
+  let s;
+  try { s = await store.remove(ex); }
   catch (e) { statusEl.textContent = "刪除失敗：" + e.message; return; }
-  if (!j.ok) { statusEl.textContent = "刪除失敗：" + (j.error || r.status); return; }
+  if (!s.ok) { statusEl.textContent = "刪除失敗：" + s.error; return; }
   currentId = null;
   loadedCode = "";                           // 編輯區的程式不再對應任何範例：換範例時會先問，不會悄悄不見
+  saveDraftSoon();
   await loadGallery();
   statusEl.textContent = `✓ 已刪除「${ex.title}」（程式還在編輯區，要的話按「＋ 新增範例」再存）`;
 }
 exUpdateBtn.addEventListener("click", updateExample);
 exDeleteBtn.addEventListener("click", deleteExample);
-codeEl.addEventListener("input", renderExButtons);
+codeEl.addEventListener("input", () => { renderExButtons(); saveDraftSoon(); });
 // Ctrl+S（Mac：⌘+S）：自己的範例就存回；其他（官方範例、貼上的程式）打開「＋ 新增範例」
 document.addEventListener("keydown", (e) => {
   if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "s") return;
@@ -994,6 +1640,100 @@ document.addEventListener("keydown", (e) => {
   const ex = currentExample();
   if (ex && ex.mine) { if (isDirty()) updateExample(); }
   else toggleAddPanel(true);
+});
+
+// ── 匯出 Arduino 資料夾、匯入 zip ─────────────────────────────────
+// 匯出：編輯區的程式交給編譯站打包成 Arduino IDE 可以直接開的資料夾（zip：同名 .ino＋BatoPixel.h＋燈條函式庫＋說明），
+// 學員不用 Babit 工具也能用 Arduino IDE 上傳。資料夾名稱只能用英數字（Arduino 的規定），所以自動編號：
+// babit_月日_序號（這個瀏覽器當天第幾次匯出；成功才佔序號）。作品名稱（目前那張範例卡片的名稱）一起送給編譯站，
+// 寫進資料夾裡的 README.txt，匯入時讀回來。
+const EXPORT_SEQ_KEY = "babit.exportSeq";
+function nextExportName() {
+  const d = new Date(), day = String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+  let n = 0;
+  try { const s = JSON.parse(localStorage.getItem(EXPORT_SEQ_KEY) || "{}"); if (s && s.day === day) n = s.n | 0; } catch (_) {}
+  return { day, n: n + 1, name: `babit_${day}_${String(n + 1).padStart(2, "0")}` };
+}
+async function exportArduino() {
+  const next = nextExportName();
+  // 作品名稱只在「編輯區的程式就是這張卡片」時才帶：自己的範例（改到一半也算），或原封不動的官方範例。
+  // 在官方範例上改過、或整段貼上別的程式，那已經不是那個範例了：不帶名稱，匯入時改用程式第一行的註解
+  const ex = currentExample();
+  const title = ex && (ex.mine || !isDirty()) ? ex.title : "";
+  let r;
+  try {
+    r = await api("/export/arduino?name=" + encodeURIComponent(next.name) + (title ? "&title=" + encodeURIComponent(title) : ""),
+      { method: "POST", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: codeEl.value });
+  } catch (e) { statusEl.textContent = "匯出失敗：" + e.message; return; }
+  if (!r.ok) {
+    let j = {};
+    try { j = await r.json(); } catch (_) {}
+    statusEl.textContent = "匯出失敗：" + String(j.error || r.status).split("\n")[0];
+    return;
+  }
+  const url = URL.createObjectURL(await r.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = next.name + ".zip";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  try { localStorage.setItem(EXPORT_SEQ_KEY, JSON.stringify({ day: next.day, n: next.n })); } catch (_) {}
+  statusEl.textContent = `✓ 已匯出 ${next.name}.zip：解壓縮後用 Arduino IDE 打開裡面的 ${next.name}.ino（步驟寫在 README.txt）`;
+}
+
+// 匯入：編譯站從 zip 讀出程式、作品名稱、燈板尺寸，再存成「我的範例」。同名的已經有了就加編號，不覆蓋。
+// 編輯區沒有還沒存的修改才載入並執行（必要時切換燈板尺寸）；有的話只放進範例庫，不動編輯區
+const importFile = document.getElementById("eximportfile");
+const IMPORT_MAX = 2 * 1024 * 1024;           // 跟編譯站 /import/arduino 的上限一樣；作品 zip 只有幾十 KB
+const NAME_MAX = 40;                          // 範例名稱的上限（編譯站 catalog.js 的 validName）
+async function importArduino(file) {
+  // 太大的檔案不用送：編譯站收到一半就會切斷連線，學員只會看到看不懂的連線錯誤
+  if (file.size > IMPORT_MAX) { statusEl.textContent = "匯入失敗：檔案太大（上限 2 MB），請選從 Babit 工具匯出的 zip"; return; }
+  let j;
+  try {
+    const r = await api("/import/arduino", { method: "POST", headers: { "Content-Type": "application/zip" }, body: file });
+    j = await r.json();
+  } catch (e) { statusEl.textContent = "匯入失敗：" + e.message; return; }
+  if (!j.ok) { statusEl.textContent = "匯入失敗：" + (j.error || "讀不懂這個檔案"); return; }
+  let saved = null, name = j.title;
+  for (let n = 1; n <= 30 && !saved; n++) {
+    // 加編號前先把名稱截短，加完才不會超過名稱的上限；截短的地方剛好在表情符號中間就整個拿掉，不留半個
+    const suffix = n === 1 ? "" : " " + n;
+    name = j.title.slice(0, NAME_MAX - suffix.length).replace(/[\uD800-\uDBFF]$/, "").trimEnd() + suffix;
+    let s;
+    try { s = await store.add({ size: j.size, name, code: j.code }); }
+    catch (e) { statusEl.textContent = "匯入失敗：" + e.message; return; }
+    if (s.exists) continue;
+    if (!s.ok) { statusEl.textContent = "匯入失敗：" + s.error; return; }
+    saved = s;
+  }
+  if (!saved) { statusEl.textContent = `匯入失敗：「${j.title}」同名的範例太多了，請先刪掉幾個`; return; }
+  const where = `${j.size}×${j.size}／我的範例`;
+  if (isDirty()) {
+    // 同一種尺寸：卡片就在下面的範例庫。另一種尺寸：卡片不在目前的範例庫，要切換過去才看得到（切換不會動編輯區改過的程式）
+    if (j.size === size) await loadGallery();
+    statusEl.textContent = `✓ 已匯入成範例「${name}」（${where}）。編輯區的程式還沒存，所以沒有動它；` +
+      (j.size === size ? "要看就點那張卡片" : `切換到 ${j.size}×${j.size} 就看得到那張卡片（編輯區的程式會留著）`);
+    return;
+  }
+  if (j.size !== size) {
+    size = j.size;
+    try { localStorage.setItem(SIZE_KEY, String(size)); } catch (_) {}
+    renderSize();
+  }
+  await loadGallery();
+  setCode(j.code, saved.id);
+  await run();
+  if (/^✓ 執行中/.test(statusEl.textContent)) statusEl.textContent = `✓ 已匯入成範例「${name}」（${where}），執行中`;
+}
+document.getElementById("exexport").addEventListener("click", exportArduino);
+document.getElementById("eximport").addEventListener("click", () => importFile.click());
+importFile.addEventListener("change", () => {
+  const f = importFile.files && importFile.files[0];
+  importFile.value = "";                      // 同一個檔案可以再選一次
+  if (f) importArduino(f);
 });
 
 // ── 複製給 AI 的說明（AGENTS.md）：學員貼到自己的 AI 對話框，AI 就知道程式要怎麼寫 ──
@@ -1008,8 +1748,30 @@ document.getElementById("aiguide").addEventListener("click", async () => {
   }
 });
 
+// ── 開頁 ──────────────────────────────────────────────────────────
+// 先問編譯站是哪個部署目標，再照目標準備：雲端版把自己的範例換成存在瀏覽器、檢查能不能燒錄、還原上次的草稿；
+// 其他的連 Art-Net 橋。然後載入範例庫，載入第一個範例（或草稿）並執行：預覽直接出現畫面
 renderSize();
-loadGallery().then(loadFirstExample);   // 開頁就載入第一個範例並執行：預覽直接出現畫面
+(async () => {
+  await loadVersion();
+  let draft = null;
+  if (CLOUD) {
+    store = browserStore;
+    draft = readDraft();
+    if (!("serial" in navigator)) {
+      state.browserWarn = "這個瀏覽器不能把程式燒進板子（預覽可以用）。要燒錄請用電腦上的 Chrome 或 Edge 開這個網址。";
+      renderWarn();
+    }
+  } else artnetConnect();
+  await loadGallery();
+  if (!draft) { await loadFirstExample(); return; }
+  codeEl.value = draft.code;
+  loadedCode = typeof draft.loaded === "string" ? draft.loaded : "";
+  currentId = typeof draft.id === "string" && galleryList.some((e) => e.id === draft.id) ? draft.id : null;
+  for (const c of cardsEl.querySelectorAll(".card")) c.classList.toggle("on", c.dataset.id === currentId);
+  renderExButtons();
+  run();
+})();
 
 runBtn.addEventListener("click", run);
 flashBtn.addEventListener("click", flash);

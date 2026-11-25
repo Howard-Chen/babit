@@ -1,7 +1,8 @@
 // 旋鈕、按鈕、亮度、麥克風靈敏度的驗證：node preview/test_inputs.js（需先啟動編譯站）
 //
-// 板子上的旋鈕與兩顆按鈕交給學員程式決定用途（knob.value()、button1／button2 的 pressed()／clicked()），
+// 板子上的旋鈕與按鈕交給學員程式決定用途（knob.value()、button1／button2 的 pressed()／clicked()），
 // 函式庫不會自己拿來做事；亮度 brightness(k) 與麥克風靈敏度 audio.sensitivity(k) 也由程式設定。
+// （這裡測按鈕 1、2；第三版板子多的按鈕 3、4 與蜂鳴器在 test_buttons_buzzer.js）
 // 預覽沒有硬體：工具頁的旋鈕滑桿與按鈕經 bp_input_set（wrapper 匯出）傳進來。這裡直接呼叫它、實跑 WASM 逐項比對。
 const { loadModule } = require("../station/load_module.js");
 const STATION = process.env.BATOPIXEL_STATION || "http://127.0.0.1:8930";

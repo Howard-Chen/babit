@@ -7,3 +7,7 @@
 *.command text eol=lf
 # 圖示是二進位，別做行尾轉換
 *.ico binary
+
+# 雲端版的檔案都在 Linux 容器裡用：一律 LF
+cloud/** text eol=lf
+.dockerignore text eol=lf

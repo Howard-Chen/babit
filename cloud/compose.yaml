@@ -1,0 +1,46 @@
+# Babit 雲端版（部署目標：雲端版）：編譯站＋對外的 HTTPS 通道（Cloudflare Tunnel）。
+# 在雲端主機上用，步驟見 vault 的「Babit雲端版GCP操作手冊」：
+#   1. 同一個資料夾放 .env（照 env.example 填：映像版本、對外的網址、課堂代碼、通道的金鑰）
+#   2. docker compose up -d                 啟動
+#      docker compose logs -f station      看每一份編譯花多久、等多久
+#      docker compose down                 關掉
+# 編譯站不對外開連接埠：外面只能經過 Cloudflare Tunnel 連到「對外的網址」，主機的防火牆不用開任何入站規則。
+services:
+  station:
+    image: babit-cloud:${BABIT_VERSION:?在 .env 填 BABIT_VERSION（cloud/build.sh 建出來的映像標籤＝commit 的前 7 碼）}
+    restart: unless-stopped
+    init: true                      # 編譯被中途停掉時，留下來的子程序有人收
+    environment:
+      BATOPIXEL_BIND: 0.0.0.0       # 容器裡綁所有位址，通道那個容器才連得到；對外沒有開連接埠
+      BATOPIXEL_ORIGINS: ${BABIT_URL:?在 .env 填 BABIT_URL（對外的網址，例如 https://class.bato.tw）}
+      BATOPIXEL_CLASS_CODE: ${BABIT_CLASS_CODE:?在 .env 填 BABIT_CLASS_CODE（課堂代碼）}
+      BATOPIXEL_FW_SLOTS: ${BABIT_FW_SLOTS:-3}
+      BATOPIXEL_PREVIEW_SLOTS: ${BABIT_PREVIEW_SLOTS:-2}
+    networks: [inside]              # 只接內部網路：編譯站連不到外面（編譯用不到網路；學員的程式也就送不出任何東西）
+    healthcheck:
+      test: ["CMD", "/opt/babit/cloud/healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # 學員的程式只會被編譯，不會在這裡執行；容器還是只給最少的權限
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    pids_limit: 1024
+    mem_limit: ${BABIT_MEM:-10g}    # 編譯吃掉太多記憶體時只會停掉那一份編譯，不會拖垮整台主機（16 GB 的主機用 10g）
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.7
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?在 .env 填 CLOUDFLARE_TUNNEL_TOKEN（Cloudflare 建通道時給的金鑰）}
+    networks: [inside, outside]
+    depends_on:
+      station:
+        condition: service_healthy
+
+networks:
+  inside:
+    internal: true
+  outside: {}

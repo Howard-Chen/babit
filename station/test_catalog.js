@@ -73,7 +73,14 @@ check("resolveExample：只認範例庫裡存在的 .ino", () => {
 });
 
 check("validName：合法的名稱", () => {
-  for (const ok of ["我的彩虹", "my rainbow 2", "好".repeat(40), "小貓（第二版）"]) assert.strictEqual(validName(ok), null, ok);
+  for (const ok of ["我的彩虹", "my rainbow 2", "好".repeat(40), "小貓（第二版）", "彩虹😀", "😀".repeat(20)]) assert.strictEqual(validName(ok), null, ok);
+});
+
+check("validName：被切成一半的表情符號不能當名稱（存成檔名會變成別的字，之後名稱就對不上）", () => {
+  for (const cut of ["彩虹\ud83d", "\ude00彩虹", "a\ud83d b", "😀\ud83d"]) {
+    const why = validName(cut);
+    assert.ok(typeof why === "string" && why.length > 0, JSON.stringify(cut) + " 應該不合法");
+  }
 });
 
 check("validName：不合法的名稱都有中文原因", () => {

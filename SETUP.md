@@ -86,7 +86,7 @@ powershell -ExecutionPolicy Bypass -File D:\CSH\CODE\batopixel\station\run_stati
 | `BATOPIXEL_EMSDK` | emsdk 根目錄 | `C:\emsdk` |
 | `BATOPIXEL_ARDUINO_CLI` | arduino-cli 執行檔 | `C:\tools\arduino-cli.exe` |
 | `BATOPIXEL_NODE` | node 執行檔 | `C:\Program Files\nodejs\node.exe` |
-| `BATOPIXEL_FQBN` | 目標開發板 | `esp32:esp32:esp32c3` |
+| `BATOPIXEL_FQBN` | 開發板與選項（只能是 ESP32S3 Dev Module 加選項：`BatoPixel.h` 會擋別的板子，要試別的板子見 README「匯出 Arduino 資料夾」的 `BP_ANY_BOARD`） | `esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M` |
 
 emsdk 內部的 python 與 node 目錄帶版本號（各機器不同），編譯站會自動偵測，不需設定。
 

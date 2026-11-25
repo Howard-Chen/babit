@@ -128,6 +128,128 @@ process.on("exit", () => { if (!done) console.log("\n測試卡住：有一個編
     say((await b).code === "B", "B 照常回結果");
   }
 
+  // ── 以下是多人共用（雲端版）的排法：同時編好幾份、每個人各排各的 ──
+  // 假的編譯器多記一件事：每份工作用的是第幾個槽
+  function fakePool() {
+    const f = fakeCompiler(), slotOf = {}, running = new Set();
+    let maxRunning = 0;
+    const run = (code, signal, slot) => {
+      slotOf[code] = slot;
+      running.add(code);
+      maxRunning = Math.max(maxRunning, running.size);
+      return f.run(code, signal).finally(() => running.delete(code));
+    };
+    return Object.assign({}, f, { run, slotOf, running, max: () => maxRunning });
+  }
+
+  console.log("── 同時編好幾份（slots）：不同人的工作一起跑，各用各的槽");
+  {
+    const f = fakePool(), q = createFwQueue(f.run, { slots: 2 });
+    const a = q("A", false, "甲"), b = q("B", false, "乙"), c = q("C", false, "丙");
+    await tick();
+    say(f.started.join() === "A,B" && f.slotOf.A !== f.slotOf.B && [0, 1].includes(f.slotOf.A) && [0, 1].includes(f.slotOf.B),
+        `兩個槽：A、B 同時開始，用不同的槽（A 用 ${f.slotOf.A}、B 用 ${f.slotOf.B}），C 在等（開始過：${f.started.join()}）`);
+    const slotA = f.slotOf.A;
+    f.finish("A"); await a; await tick();
+    say(f.started.join() === "A,B,C" && f.slotOf.C === slotA, `A 編完，C 接著用 A 空出來的槽（${f.slotOf.C}）`);
+    f.finish("B"); f.finish("C"); await b; await c;
+    say(f.max() === 2, "同時在編的最多 2 份（實際最多 " + f.max() + "）");
+  }
+
+  console.log("── 每個人同時只編一份：自己的第二份要等，不會佔掉別人的槽");
+  {
+    const f = fakePool(), q = createFwQueue(f.run, { slots: 3 });
+    const a1 = q("甲1", false, "甲"), a2 = q("甲2", false, "甲"), b1 = q("乙1", false, "乙");
+    await tick();
+    say(f.started.join() === "甲1,乙1", "三個槽：甲的第一份和乙的一起跑，甲的第二份等甲的第一份（開始過：" + f.started.join() + "）");
+    f.finish("甲1"); await a1; await tick();
+    say(f.started.join() === "甲1,乙1,甲2", "甲的第一份編完，才輪到甲的第二份");
+    f.finish("甲2"); f.finish("乙1"); await a2; await b1;
+  }
+
+  console.log("── 背景預編「只留最新的」只看同一個人：別人的不受影響");
+  {
+    const f = fakePool(), q = createFwQueue(f.run, { slots: 2 });
+    const a = q("甲舊", true, "甲"), b = q("乙舊", true, "乙");
+    await tick();
+    const a2 = q("甲新", true, "甲");                  // 甲換了程式 → 只停甲的
+    const ra = await now(a);
+    say(ra !== WAITING && ra.superseded === true && f.stopped.join() === "甲舊", "甲送了新的：甲正在編的舊的停掉（停掉過：" + f.stopped.join() + "）");
+    say((await now(b)) === WAITING, "乙正在編的不受影響");
+    await tick();
+    say(f.started.join() === "甲舊,乙舊,甲新", "甲的新的接著編（開始過：" + f.started.join() + "）");
+    const b2 = q("乙新A", true, "乙"), b3 = q("乙新B", true, "乙");   // 乙排隊中的舊背景作廢，只留最新
+    const rb2 = await now(b2);
+    say(rb2 !== WAITING && rb2.superseded === true, "乙排隊中的背景預編被自己更新的取代");
+    f.finish("甲新"); await a2; await tick(); await tick();
+    f.finish("乙新B"); await b3; await now(b);
+  }
+
+  console.log("── 輪流：一個人排了一長串，別人不用等他全部編完");
+  {
+    const f = fakePool(), q = createFwQueue(f.run, { slots: 1 });
+    const x1 = q("甲1", false, "甲"), x2 = q("甲2", false, "甲"), x3 = q("甲3", false, "甲");
+    await tick();
+    const y1 = q("乙1", false, "乙");
+    f.finish("甲1"); await x1; await tick();
+    say(f.started.join() === "甲1,乙1", "只有一個槽：甲的第一份編完先換乙，不是甲的第二份（開始過：" + f.started.join() + "）");
+    f.finish("乙1"); await y1; await tick();
+    f.finish("甲2"); await x2; await tick();
+    f.finish("甲3"); await x3;
+    say(f.started.join() === "甲1,乙1,甲2,甲3", "之後甲的照原本的順序（開始過：" + f.started.join() + "）");
+  }
+
+  console.log("── 每個人排隊的份數有上限（雲端版 maxWaiting）：超過的馬上回「忙」，不會一個人塞滿編譯站");
+  {
+    const f = fakePool(), q = createFwQueue(f.run, { slots: 1, maxWaiting: 2 });
+    const a1 = q("甲1", false, "甲"), a2 = q("甲2", false, "甲"), a3 = q("甲3", false, "甲");   // 甲1 正在編，甲2、甲3 在排
+    await tick();
+    const r4 = await now(q("甲4", false, "甲"));
+    say(r4 !== WAITING && r4.ok === false && r4.busy === true && !("log" in r4), "甲已經排了 2 份：再送的馬上回 { ok:false, busy:true }，沒有 log（不是程式有錯）：" + JSON.stringify(r4));
+    const rbg = await now(q("甲背景", true, "甲"));
+    say(rbg !== WAITING && rbg.busy === true, "背景的請求也一樣（他排隊中沒有舊的背景請求可以換）");
+    const b1 = q("乙1", false, "乙");
+    say((await now(b1)) === WAITING, "別人不受影響：乙照常排隊");
+    f.finish("甲1"); await a1; await tick();
+    say(f.started.join() === "甲1,乙1", "被拒絕的沒有進佇列：接著編的是乙（開始過：" + f.started.join() + "）");
+    const r5 = await now(q("甲5", false, "甲"));            // 甲1 編完了：甲排隊中的還是 2 份（甲2、甲3）
+    say(r5 !== WAITING && r5.busy === true, "正在編的不算在排隊的份數裡：甲還是排了 2 份，再送照樣回忙");
+    f.finish("乙1"); await b1; await tick();
+    f.finish("甲2"); await a2; await tick();
+    const a6 = q("甲6", false, "甲");                       // 甲3 正在編，排隊中的是 0 份
+    say((await now(a6)) === WAITING, "排隊的消化掉了：又可以送");
+    f.finish("甲3"); await a3; await tick();
+    f.finish("甲6"); await a6;
+  }
+  {
+    const f = fakePool(), q = createFwQueue(f.run, { slots: 1, maxWaiting: 1 });
+    const a1 = q("甲1", false, "甲"), old = q("甲舊背景", true, "甲");   // 甲1 正在編，舊背景在排（剛好到上限）
+    await tick();
+    const fresh = q("甲新背景", true, "甲");
+    const rold = await now(old);
+    say(rold !== WAITING && rold.superseded === true && (await now(fresh)) === WAITING, "到上限時送新的背景請求：換掉他排隊中舊的那個（份數沒變），不算超過");
+    f.finish("甲1"); await a1; await tick();
+    f.finish("甲新背景"); await fresh;
+  }
+  {
+    const f = fakePool(), q = createFwQueue(f.run, { slots: 1 });
+    const jobs = Array.from({ length: 30 }, (_, i) => q("A" + i, false));
+    await tick();
+    say((await now(jobs[29])) === WAITING, "沒設上限（離線版）：排幾份都收");
+    for (let i = 0; i < 30; i++) { f.finish("A" + i); await jobs[i]; await tick(); }
+  }
+
+  console.log("── 沒說是誰的（離線版）跟以前一樣：全部算同一個人，一次一份、照順序");
+  {
+    const f = fakePool(), q = createFwQueue(f.run);
+    const a = q("A", false), b = q("B", false);
+    await tick();
+    say(f.started.join() === "A" && f.slotOf.A === 0, "預設一個槽、槽號 0（開始過：" + f.started.join() + "）");
+    f.finish("A"); await a; await tick();
+    f.finish("B"); await b;
+    say(f.max() === 1, "同時只編一份");
+  }
+
   done = true;
   console.log(bad ? `\n${bad} 項失敗` : "\n全部通過");
   process.exitCode = bad ? 1 : 0;

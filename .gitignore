@@ -29,3 +29,11 @@ station/cache/
 
 # 學員電腦的工具鏈（install.ps1／install.sh 從隨身碟裝的）
 tools/
+
+# 版本檔只在發佈（dev/publish.sh）或建雲端版映像時產生；開發的 repo 裡沒有這個檔＝開發版
+/version.json
+
+# 雲端版的設定檔（對外的網址、課堂代碼、通道的金鑰）：只放在雲端主機上，不進版控
+cloud/.env
+# cloud/build.sh --pack 打包出來的檔案
+/babit-cloud-*.tar.gz

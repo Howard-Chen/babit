@@ -52,7 +52,7 @@ const say = (ok, msg) => { if (!ok) bad++; console.log((ok ? "  ok   " : "  FAIL
   const LIB = [
     ["delay()（第 11 行）", DELAY, ["不能用 delay()", "sketch.ino:11"]],
     ["PANEL 12", prog(OKBODY, "#define PANEL 12\n"), ["PANEL 只能是 8 或 16"]],
-    ["PORT D", prog(OKBODY, "#define PANEL 8\n#define PORT D\n"), ["PORT 只能是 A、B 或 C"]],
+    ["PORT D", prog(OKBODY, "#define PANEL 8\n#define PORT D\n"), ["PORT 只能是 A 或 B"]],
     ["改電源上限（#define BP_USB_MAX_MA 5000）", prog(OKBODY, "#define PANEL 8\n#define BP_USB_MAX_MA 5000\n"), ["電源上限"]],
     ["改電流估算（#define BP_MA_PER_COLOR 1）", prog(OKBODY, "#define PANEL 16\n#define BP_MA_PER_COLOR 1\n"), ["電源上限"]],
     ["delayMicroseconds()（第 11 行）",

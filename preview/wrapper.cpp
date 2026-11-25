@@ -9,6 +9,7 @@
 #define BP_WARN_NO_BEGIN   1   // setup() 沒有呼叫 begin()：板子上燈板、麥克風、IMU 都沒啟動
 #define BP_WARN_NO_SHOW    2   // 有一次 loop() 沒有呼叫 show()：板子上畫面不會送出，聲音與傾斜也不會更新
 #define BP_WARN_MULTI_SHOW 4   // 有一次 loop() 呼叫了不只一次 show()：板子上一次 loop() 會拖好幾格
+#define BP_WARN_LONG_BEEP  8   // buzzer.beep() 的秒數超過 10：單位是秒，很可能把毫秒當成秒（200＝響 200 秒）
 static bool bp_setup_done = false;
 static int  bp_warn_flags = 0;
 
@@ -23,6 +24,7 @@ void bp_tick(float t) {
   bp_audio_analyze();   // 跟板子 show() 的順序一樣：先讀聲音、傾斜、旋鈕、按鈕，再畫下一格
   bp_tilt_poll();       // 預覽沒有 IMU：模擬左右搖擺（JS 用 bp_tilt_set 指定時改用指定值）
   bp_inputs_poll();     // 旋鈕、按鈕：工具頁的滑桿與按鈕（bp_input_set）
+  bp_buzzer_poll();     // 蜂鳴器：beep() 的時間到了就停
   if (!bp_setup_done) {
     bp_setup_done = true;
     setup();
@@ -36,7 +38,7 @@ void bp_tick(float t) {
 
 // 到目前為止出現過的提醒（位元見上面 BP_WARN_*）
 EMSCRIPTEN_KEEPALIVE
-int bp_warn() { return bp_warn_flags; }
+int bp_warn() { return bp_warn_flags | (bp_buzz_long ? BP_WARN_LONG_BEEP : 0); }
 
 EMSCRIPTEN_KEEPALIVE
 int bp_fps() { return BP_FPS; }
@@ -50,6 +52,43 @@ int bp_height() { return BP_H; }
 
 EMSCRIPTEN_KEEPALIVE
 int bp_pin() { return BP_PIN; }
+
+// 燈條（學員程式的 #define STRIP 幾顆，接在另一個接口）：工具頁照顆數畫一排、每格讀內容（每顆 r、g、b 三個位元組）；
+// 沒寫 STRIP 的程式顆數是 0、內容是空的。亮度是 strip.brightness() 設的 0–1（沒設定＝預設），腳位給測試核對
+EMSCRIPTEN_KEEPALIVE
+int bp_strip_count() { return BP_STRIP_N; }
+
+EMSCRIPTEN_KEEPALIVE
+int bp_strip_pin() { return BP_STRIP_PIN; }
+
+#ifdef STRIP
+EMSCRIPTEN_KEEPALIVE
+uint8_t* bp_strip_buffer() { return (uint8_t*)bp_sfb; }
+
+EMSCRIPTEN_KEEPALIVE
+float bp_strip_brightness() { return bp_strip_bright(); }
+#else
+EMSCRIPTEN_KEEPALIVE
+uint8_t* bp_strip_buffer() { return 0; }
+
+EMSCRIPTEN_KEEPALIVE
+float bp_strip_brightness() { return BP_BRIGHTNESS_PCT / 100.0f; }
+#endif
+
+// 燈條亮的部分的電流估算（板子限流用的 bp_strip_ma）：測試核對係數。sum＝燈條所有燈的 r＋g＋b，bri＝燈條亮度
+EMSCRIPTEN_KEEPALIVE
+float bp_strip_current_ma(float sum, int bri) { return bp_strip_ma(sum, bri); }
+
+// 板子送到燈條的資料（色序、亮度、限流的調暗；板子用的 bp_strip_bytes）：測試核對。回傳一顆燈三個位元組裡的第 j 個
+EMSCRIPTEN_KEEPALIVE
+int bp_strip_wire(int r, int g, int b, float k, int bri, int order, int j) {
+  uint8_t out[4] = {0, 0, 0, 0};
+  bp_strip_bytes(rgb(r, g, b), k, bri, order, out);
+  return j >= 0 && j < 3 ? out[j] : -1;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int bp_strip_order() { return BP_STRIP_COLOR_ORDER; }
 
 // 畫面座標 → 燈條上的第幾顆（板子送燈用的 bp_index，見 BatoPixel.h「燈板接線」）：測試核對燈板接線
 EMSCRIPTEN_KEEPALIVE
@@ -73,9 +112,25 @@ int bp_current_limit(int pd) { return pd ? BP_PD_MAX_MA : BP_USB_MAX_MA; }
 EMSCRIPTEN_KEEPALIVE
 void bp_tilt_set(float x, float y) { bp_tilt_override(x, y); }
 
-// 工具頁的旋鈕滑桿（0–1）與兩顆按鈕（1＝按著）：下一格 loop() 前換算成 pressed()／clicked()
+// 工具頁的旋鈕滑桿（0–1）與四顆按鈕（1＝按著）：下一格 loop() 前換算成 pressed()／clicked()。
+// 從 JavaScript 呼叫時後面的參數沒給就是 0：只給旋鈕與按鈕 1、2 的舊呼叫法照樣可以
 EMSCRIPTEN_KEEPALIVE
-void bp_input_set(float knob, int b1, int b2) { bp_input_override(knob, b1 != 0, b2 != 0); }
+void bp_input_set(float knob, int b1, int b2, int b3, int b4) { bp_input_override(knob, b1 != 0, b2 != 0, b3 != 0, b4 != 0); }
+
+// 蜂鳴器現在該響的頻率（Hz，0＝沒出聲）：工具頁每格讀一次，用電腦的喇叭發聲
+EMSCRIPTEN_KEEPALIVE
+float bp_buzzer_hz() { return bp_buzz_hz; }
+
+// 測試用：假裝板子上沒有蜂鳴器（0）或有（1）。板子在 begin() 時自己偵測；預覽一律當成有
+EMSCRIPTEN_KEEPALIVE
+void bp_buzzer_present(int ok) { bp_buzz_ok = ok != 0; }
+
+// 板子上的固定腳位（測試核對跟 PCB 的接線表一樣）：0–3＝按鈕 1–4，4＝蜂鳴器
+EMSCRIPTEN_KEEPALIVE
+int bp_board_pin(int i) {
+  const int pins[5] = { BP_BTN1_PIN, BP_BTN2_PIN, BP_BTN3_PIN, BP_BTN4_PIN, BP_BUZZER_PIN };
+  return i >= 0 && i < 5 ? pins[i] : -1;
+}
 
 // 學員程式設的亮度（0–1）；網頁畫預覽時乘上「亮度 ÷ 預設亮度」（最多 1），調低就變暗
 EMSCRIPTEN_KEEPALIVE

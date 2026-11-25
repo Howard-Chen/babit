@@ -1,0 +1,16 @@
+# 雲端版映像（cloud/Dockerfile）不需要的東西：不送進建置環境
+.git
+tools
+docs
+dev
+tests
+usb
+bridge
+node_modules
+station/tmp
+station/cache
+preview/web
+firmware/*/build
+examples/*/我的範例
+**/*.log
+**/*.bak

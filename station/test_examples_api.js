@@ -23,7 +23,7 @@ const pngSize = (buf) => (buf.length > 24 ? [buf.readUInt32BE(16), buf.readUInt3
   say(official8.every((e) => e.id.startsWith("8x8/") && e.desc && e.thumb === "/thumb?id=" + encodeURIComponent(e.id)),
       "每個範例都有 id、說明、縮圖網址");
   const list16 = await (await get("/examples?size=16")).json();
-  say(JSON.stringify(list16.filter((e) => e.category !== "我的範例").map((e) => e.title)) === JSON.stringify(["彩虹流動", "小綠人", "中文跑馬燈", "生命遊戲", "沙漏番茄鐘", "FFT頻譜"]),
+  say(JSON.stringify(list16.filter((e) => e.category !== "我的範例").map((e) => e.title)) === JSON.stringify(["彩虹流動", "小綠人", "中文跑馬燈", "生命遊戲", "沙漏番茄鐘", "FFT頻譜", "煎荷包蛋"]),
       "16×16：" + list16.map((e) => e.title).join("、"));
   say((await get("/examples?size=12")).status === 400, "size 不是 8／16：400");
 
@@ -77,20 +77,29 @@ const pngSize = (buf) => (buf.length > 24 ? [buf.readUInt32BE(16), buf.readUInt3
     say(r.status === 400, "空程式：400");
     say(!fs.existsSync(path.join(MY, "a")), "名稱有斜線時沒有建出子資料夾");
 
-    console.log("── 學員範例的縮圖（編譯站產生、快取）");
+    console.log("── 學員範例的縮圖（工具頁算好上傳；編譯站自己不算，原因與其他檢查見 test_security.js）");
+    const { encodePng } = require("../examples/png.js");
+    const stamp = "// " + Date.now() + "\n";             // 沒出現過的內容：縮圖照程式內容認，不會拿到以前存的
+    r = await save({ size: 8, name, code: GOOD.replace("RED", "BLUE") + stamp, overwrite: true });
+    const keyOf = async (id) => ((await (await get("/examples?size=8")).json()).find((e) => e.id === id) || {}).thumbKey;
     let t0 = Date.now();
     let png = await get("/thumb?id=" + encodeURIComponent(idOf(file)));
-    let [w, h] = pngSize(Buffer.from(await png.arrayBuffer()));
-    say(png.status === 200 && w === 224 && h === 8, `我的範例的縮圖自動產生 ${w}×${h}（${Date.now() - t0} ms）`);
-    t0 = Date.now();
+    say(png.status === 404 && Date.now() - t0 < 1000, `我的範例還沒有縮圖：${png.status}，編譯站不替它算（${Date.now() - t0} ms）`);
+    const key = await keyOf(idOf(file));
+    if (key) made.push(path.join(__dirname, "cache", "thumbs", key + ".png"));      // 測試上傳的縮圖最後也刪掉
+    say(/^[0-9a-f]{40}$/.test(key || ""), "清單給這個範例一把縮圖的鑰匙（thumbKey），工具頁算好縮圖後用它上傳");
+    const sprite = encodePng(224, 8, Buffer.alloc(224 * 8 * 3, 9));
+    const up = await fetch(STATION + "/thumb?id=" + encodeURIComponent(idOf(file)) + "&k=" + key,
+      { method: "PUT", headers: { "content-type": "image/png" }, body: sprite });
     png = await get("/thumb?id=" + encodeURIComponent(idOf(file)));
-    say(png.status === 200 && Date.now() - t0 < 500, `第二次直接用快取（${Date.now() - t0} ms）`);
+    const back = Buffer.from(await png.arrayBuffer());
+    const [w, h] = pngSize(back);
+    say(up.status === 200 && png.status === 200 && back.equals(sprite) && w === 224 && h === 8, `上傳之後拿得到同一張 ${w}×${h}（${up.status}、${png.status}）`);
 
     const direct = path.join(MY, "測試_直接寫入_" + process.pid + ".ino");   // AI 直接寫進資料夾、沒經過「新增範例」
     made.push(direct);
-    fs.writeFileSync(direct, GOOD.replace("RED", "GREEN"));
-    png = await get("/thumb?id=" + encodeURIComponent(idOf(direct)));
-    say(png.status === 200, "直接寫進資料夾的範例也有縮圖");
+    fs.writeFileSync(direct, GOOD.replace("RED", "GREEN") + stamp);
+    say(/^[0-9a-f]{40}$/.test((await keyOf(idOf(direct))) || ""), "直接寫進資料夾的範例也有鑰匙：工具頁一樣會替它算縮圖");
 
     console.log("── 改自己的範例：存回（PUT）、刪除（DELETE），只能動「我的範例」");
     const put = async (id, code) => {
@@ -131,17 +140,13 @@ const pngSize = (buf) => (buf.length > 24 ? [buf.readUInt32BE(16), buf.readUInt3
     r = await del(idOf(file));
     say(r.status === 404, "再刪一次：404");
 
-    const hang = path.join(MY, "測試_卡住_" + process.pid + ".ino");          // 純無窮迴圈：只有執行緒逾時救得了
+    const hang = path.join(MY, "測試_卡住_" + process.pid + ".ino");          // 純無窮迴圈：編譯站不跑它，所以卡不住編譯站
     made.push(hang);
-    fs.writeFileSync(hang, GOOD.replace("dot(seconds() * 4, 0, RED);", "volatile int spin = 0;\n  for (;;) { spin++; }"));
+    fs.writeFileSync(hang, GOOD.replace("dot(seconds() * 4, 0, RED);", "volatile int spin = 0;\n  for (;;) { spin++; }") + stamp);
     t0 = Date.now();
-    const pending = get("/thumb?id=" + encodeURIComponent(idOf(hang)));
-    await new Promise((ok) => setTimeout(ok, 1000));
-    const ta = Date.now();
-    const alive = (await get("/examples?size=8")).ok, aliveMs = Date.now() - ta;
-    const hr = await pending;
-    say(hr.status === 404 && alive && aliveMs < 2000,
-        `卡住的程式：縮圖 ${hr.status}（${Date.now() - t0} ms），等的時候編譯站照常回應（${aliveMs} ms）`);
+    const hr = await get("/thumb?id=" + encodeURIComponent(idOf(hang)));
+    say(hr.status === 404 && Date.now() - t0 < 1000 && (await get("/examples?size=8")).ok,
+        `卡住的程式：要縮圖馬上回 ${hr.status}（${Date.now() - t0} ms），編譯站照常回應`);
   } finally {
     for (const f of made) fs.rmSync(f, { force: true });
   }

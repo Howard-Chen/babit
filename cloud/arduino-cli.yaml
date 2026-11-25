@@ -1,0 +1,15 @@
+# 雲端版映像裡 arduino-cli 的設定：內容照學員安裝包（install.sh 產生的 tools/arduino-cli.yaml），路徑換成映像裡的位置。
+# 編譯站看到 tools/arduino-cli.yaml 就會帶 --config-file（station/toolpaths.js）。
+board_manager:
+  additional_urls:
+    - https://espressif.github.io/arduino-esp32/package_esp32_index.json
+directories:
+  data: /opt/babit/tools/arduino/data
+  user: /opt/babit/tools/arduino/user
+  downloads: /opt/babit/tools/arduino/staging
+build_cache:
+  path: /opt/babit/tools/arduino/cache
+library:
+  enable_unsafe_install: true
+updater:
+  enable_notification: false
