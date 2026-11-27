@@ -170,6 +170,9 @@ EMSCRIPTEN_KEEPALIVE
 int bp_audio_beat() { return audio.beat() ? 1 : 0; }
 
 EMSCRIPTEN_KEEPALIVE
+float bp_audio_pitch() { return audio.pitch(); }
+
+EMSCRIPTEN_KEEPALIVE
 int bp_audio_bands() { return BP_BANDS; }
 
 // 測試用：直接指定靈敏度倍率（學員程式用 audio.sensitivity(0–1)，沒設定是 1.0）

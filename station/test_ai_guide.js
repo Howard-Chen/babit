@@ -28,6 +28,9 @@ const firstError = (log) => (log || "").split(/\r?\n/).find((l) => /error/.test(
   // 燈條（2026-11-24，聖誕花圈課）：另一個接口接一條燈條，寫法與「學員沒提到就不要加」都要講到
   for (const must of ["#define STRIP", "strip.dot(", "strip.fill(", "strip.clear()", "strip.fade(", "strip.brightness(", "燈條預覽", "學員說有接燈條時才用", "不要自己開 `Adafruit_NeoPixel`"])
     say(text.includes(must), "說明書有寫到「" + must + "」");
+  // 音高（2026-11-25）：跟著唱的音高動的作品用；只看說明書的 AI 要知道聽不出來是 0、怎麼換成音名、八度會錯
+  for (const must of ["audio.pitch()", "聽不出音高", "log2f(", "高八度或低八度"])
+    say(text.includes(must), "說明書有寫到「" + must + "」");
   // 新版的板子（2026-11）沒有 C 接口：那支腳是按鈕 4，說明書不能再教 AI 寫 PORT C
   say(!/PORT C\b|（或 `C`）|A／B／C/.test(text), "說明書沒有再提 C 接口");
 

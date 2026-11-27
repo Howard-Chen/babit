@@ -225,6 +225,8 @@ node preview/test_inputs.js             旋鈕、按鈕、亮度、麥克風靈�
 node preview/test_buttons_buzzer.js     按鈕 3、4 與蜂鳴器：beep／tone／off／playing、NOTE_ 音名、Arduino 的 tone()／noTone() 兩端都擋下、
                                         頻率下限 40 Hz、秒數不是數字、把毫秒當成秒的提醒、腳位（8／9／44／4／10）、等蜂鳴器的迴圈會被預覽停下、
                                         舊程式的 PORT C 照樣編得過（那時兩端都不讀按鈕 4）
+node preview/test_pitch.js              音高 audio.pitch()：正弦波與有泛音的聲音量到的頻率（差不到 20 音分）、滑音、聽不出音高時是 0
+                                        （安靜、太小聲、雜音、拍手）、70–2000 Hz 的範圍與更高的音量成低八度、兩端編得過
 node preview/test_strip.js              燈條（#define STRIP）：strip.dot／fill／clear／fade／brightness 逐格驗證、接口跟著 PORT 換、
                                         燈條算進限流、沒寫 STRIP 的程式不受影響、STRIP 寫錯的中文訊息、兩端編得過
 node station/test_compile.js            格式錯誤與 delay() 的中文訊息、行號、預覽卡住保護、提醒（兩端編譯）、背景預編被停掉、固定建置資料夾
@@ -281,6 +283,16 @@ bash tests/install_mac.sh                                         Mac 安裝程�
 - 不收的 zip 都給中文原因：超過 2 MB（工具頁先擋，不送出）、謊報大小或內容損毀（`zip.js` 用實際解開的大小與檢查碼核對）、程式大到存不成範例（約 900 KB）、沒有 `#define PANEL`、作品有好幾個分頁（同一個資料夾裡還有別的 `.ino`／`.h`／`.cpp`：工具的範例是單一檔案，只收主檔的話分頁的程式會不見，所以請學員先併回主程式）。
 - `README.txt`（給學員看的步驟）要先講解壓縮：Windows 可以直接點開 zip 裡的 `.ino`，那樣 Arduino IDE 旁邊沒有 `BatoPixel.h`，會編不過。
 - 還沒在真的 Arduino IDE 上驗過（測試用的是 arduino-cli，也就是 IDE 裡面的編譯引擎）：Windows 使用者名稱是中文、Apple 晶片的 Mac 要不要 Rosetta，要實機試。
+
+## 音高（audio.pitch()）
+
+2026-11-25 為每週作品「音高闖關」加的：回傳麥克風現在聽到的音高（基頻，Hz），聽不出來是 0。頻譜（`audio.band()`）一段約半個八度，分不出差一個音。
+
+- **做法**：McLeod Pitch Method。取最新 512 筆（16 kHz＝32 毫秒），自相關用 FFT 算（多兩次 1024 點的 FFT；一筆一筆乘要十幾萬次乘加，板子上約 5 毫秒，太慢），正規化後取「第一個」夠高（最高峰的 0.9 倍以上）的峰當週期，拋物線內插。峰的高度不到 `BP_PITCH_CLARITY`（0.6）就當成沒有音高。
+- **什麼時候是 0**：沒有音源、音量在雜訊閘以下（跟 `audio.level()` 同一個門檻，`audio.sensitivity()` 也管得到）、雜音、拍手。
+- **範圍**：約 70–2000 Hz（人聲、口哨、直笛）；2000–4000 Hz 量成低八度（音名一樣），再高不準。兩端的取樣率都是 16 kHz。
+- **花費**：程式有呼叫才算、一格只算一次（`bp_audio_frame`），借用 FFT 的暫存陣列。沒用到的程式不受影響。板子上實際花多久還沒量。
+- **沒做的**：不做平滑、不修八度（每一格回傳當下量到的值）。還沒用真的麥克風、真的人聲試過，只用合成的聲音驗證。
 
 ## 燈條（另一個接口接一條 WS2812 燈條）
 

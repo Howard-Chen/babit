@@ -338,6 +338,7 @@ static bool  bp_beat = false;
 static int   bp_beat_hold = 0;
 static bool  bp_audio_on = false;
 static int   bp_audio_idle = 0;     // 連續幾格畫面沒收到新取樣（見 analyze）
+static uint32_t bp_audio_frame = 0;  // 第幾格畫面（analyze 每格加一）：audio.pitch() 靠它一格只算一次
 
 inline void bp_audio_push(float s) {
   bp_ring[bp_ring_w] = s;
@@ -383,6 +384,7 @@ static void bp_fft() {
 
 // 每格畫面呼叫一次：去直流 → Hann 視窗 → FFT → 頻段能量 → 自動增益
 inline void bp_audio_analyze() {
+  bp_audio_frame++;
   if (!bp_audio_on) return;
   // 超過半秒沒有新取樣（網頁上關掉麥克風或測試音）就當作沒有音源：ready() 變回 false、數值歸零。
   // 否則環形緩衝裡的舊聲音會每格被重算一次，頻譜停在最後一格，範例也回不到示意模式。
@@ -471,6 +473,79 @@ inline void bp_audio_analyze() {
   }
 }
 
+// ── 音高（audio.pitch()）────────────────────────────────────────────
+// 回傳現在聽到的音高（基頻，Hz）；太小聲、沒有聲音或聽不出音高（雜音、氣音、拍手）回傳 0。範圍約 70–2000 Hz（人聲、口哨、直笛）；2000–4000 Hz 的音會量成低八度（音名一樣），再高就不準。
+// 頻譜（audio.band()）一段約半個八度，分不出差一個音；跟著唱的音高動的作品要靠這個（2026-11-25，每週作品「音高闖關」）。
+// 做法是 McLeod Pitch Method：聲音跟「往後挪 τ 筆的自己」比，挪的剛好是一個週期時最像。
+//   1. 取最新的 512 筆（16 kHz＝32 毫秒）、去直流，後面補零到 1024
+//   2. 自相關 r(τ) 用 FFT 算（FFT → 每個頻率的能量 → 再 FFT 一次），比一筆一筆乘快很多：
+//      直接算要十幾萬次乘加（板子上約 5 毫秒，16×16 燈板一格就送不完），這樣只多兩次 1024 點的 FFT
+//   3. 正規化：n(τ) = 2·r(τ) ÷ m(τ)，m(τ) 是兩段重疊部分的能量和；一模一樣是 1、完全不像是 0、反相是 −1
+//   4. 跳過 τ＝0 附近那一段，之後每一段正的找最高點；取「第一個」夠高（最高的那個的 0.9 倍以上）的當週期。
+//      取第一個而不是最高的：週期的 2 倍、3 倍也一樣像，直接取最高的常會低八度
+//   5. 那個最高點不到 BP_PITCH_CLARITY 就當成沒有音高；拋物線內插出小數的 τ，頻率＝取樣率 ÷ τ
+// 只在程式呼叫 audio.pitch() 時才算、一格只算一次；沒用到的程式不花這個時間。借用 bp_re／bp_im 當暫存（那一格的頻段已經算完）。
+// 兩端的取樣率都是 16 kHz（板子的 I²S、工具頁重新取樣後）；取樣率更高時緩衝裝的時間變短，量得到的最低音會變高。
+#define BP_PITCH_MIN_HZ   70.0f
+#define BP_PITCH_MAX_HZ   2000.0f     // 16 kHz 下一個週期只剩 8 筆；再高內插就不準了
+#define BP_PITCH_CLARITY  0.6f       // 最像的程度（0–1）不到這個就當成沒有音高：乾淨的單音約 0.9 以上，雜音 0.3 上下
+static float    bp_pitch_hz = 0.0f;
+static uint32_t bp_pitch_frame = 0xFFFFFFFFu;   // 哪一格算過了
+
+static float bp_pitch_compute() {
+  if (!bp_audio_on || bp_level <= 0.0f) return 0.0f;           // 沒有音源，或比雜訊閘小聲（跟 audio.level() 同一個門檻）
+  const int N = BP_FFT_N, W = BP_FFT_N / 2, mask = BP_FFT_N - 1;
+  int tmin = (int)(bp_rate / BP_PITCH_MAX_HZ), tmax = (int)(bp_rate / BP_PITCH_MIN_HZ + 0.5f);
+  if (tmax > W / 2) tmax = W / 2;                               // 至少要有半個視窗重疊，再長的週期量不準
+  if (tmin < 2) tmin = 2;
+  if (tmax <= tmin + 2) return 0.0f;
+  const int start = bp_ring_w - W;                              // 最新 W 筆裡最舊的那一筆（由舊到新）
+  float mean = 0.0f;
+  for (int i = 0; i < W; i++) mean += bp_ring[(start + i) & mask];
+  mean /= (float)W;
+  float energy = 0.0f;
+  for (int i = 0; i < W; i++) {
+    float v = bp_ring[(start + i) & mask] - mean;
+    bp_re[i] = v; bp_im[i] = 0.0f;
+    energy += v * v;
+  }
+  for (int i = W; i < N; i++) { bp_re[i] = 0.0f; bp_im[i] = 0.0f; }
+  if (energy <= 1e-12f) return 0.0f;
+  bp_fft();
+  for (int i = 0; i < N; i++) { bp_re[i] = bp_re[i] * bp_re[i] + bp_im[i] * bp_im[i]; bp_im[i] = 0.0f; }
+  bp_fft();                                                     // bp_re[τ] ÷ N＝自相關 r(τ)（補了零，不會繞回來）
+  // n(τ) 存進 bp_im[τ]（τ＝0…tmax+1）；m(τ) 從 m(0)＝2·能量 往下扣掉兩頭各一筆
+  float m = 2.0f * energy;
+  bp_im[0] = 1.0f;
+  for (int t = 1; t <= tmax + 1; t++) {
+    float a = bp_ring[(start + t - 1) & mask] - mean, b = bp_ring[(start + W - t) & mask] - mean;
+    m -= a * a + b * b;
+    bp_im[t] = m > 1e-12f ? 2.0f * (bp_re[t] / (float)N) / m : 0.0f;
+  }
+  // 每一段正的找最高點（要真的是個峰：比左右都高）
+  int t = 1;
+  while (t <= tmax && bp_im[t] > 0.0f) t++;                     // τ＝0 附近那一段不算
+  int peaks[24], np = 0;
+  float best = 0.0f;
+  while (t <= tmax && np < 24) {
+    while (t <= tmax && bp_im[t] <= 0.0f) t++;
+    int top = -1;
+    for (; t <= tmax && bp_im[t] > 0.0f; t++)
+      if (bp_im[t] >= bp_im[t - 1] && bp_im[t] >= bp_im[t + 1] && (top < 0 || bp_im[t] > bp_im[top])) top = t;
+    if (top >= tmin) { peaks[np++] = top; if (bp_im[top] > best) best = bp_im[top]; }
+  }
+  for (int i = 0; i < np; i++) {
+    const int k = peaks[i];
+    if (bp_im[k] < best * 0.9f) continue;
+    const float a = bp_im[k - 1], b = bp_im[k], c = bp_im[k + 1], den = a - 2.0f * b + c;
+    const float d = den < -1e-9f ? 0.5f * (a - c) / den : 0.0f;     // 拋物線內插：真正的最高點在 k＋d
+    if (b - 0.25f * (a - c) * d < BP_PITCH_CLARITY) return 0.0f;
+    const float hz = bp_rate / ((float)k + d);
+    return hz > BP_PITCH_MAX_HZ * 1.05f ? 0.0f : hz;
+  }
+  return 0.0f;
+}
+
 // 學員用的 API
 // 預覽：同一格裡聲音與傾斜不會變，「用迴圈等它們變」（while (!audio.beat())）會讓整個頁面卡死；
 // 讀的次數多到不合理時中止這一格（bp_sense_read 定義在下面的預覽版底層）。板子上不計數。
@@ -485,6 +560,11 @@ struct BPAudio {
   float level() const { BP_SENSE_READ(); return bp_level; }                 // 音量 0–1
   float band(int i) const { BP_SENSE_READ(); return (i < 0 || i >= BP_BANDS) ? 0.0f : bp_bands[i]; }  // 頻段能量 0–1
   bool  beat()  const { BP_SENSE_READ(); return bp_beat; }                  // 這格畫面有無節拍
+  float pitch() const {                                                     // 現在聽到的音高（Hz）；聽不出來是 0
+    BP_SENSE_READ();
+    if (bp_pitch_frame != bp_audio_frame) { bp_pitch_frame = bp_audio_frame; bp_pitch_hz = bp_pitch_compute(); }
+    return bp_pitch_hz;
+  }
   bool  ready() const { BP_SENSE_READ(); return bp_audio_on; }              // 麥克風有沒有在供料（停止半秒後變回 false）
   void  sensitivity(float k) const { bp_sensitivity_01(k); }                // 靈敏度 0–1（0.5＝一般），例如 audio.sensitivity(knob.value())
 };
