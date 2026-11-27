@@ -423,9 +423,6 @@ const WARN_TEXT = {
   4: "loop() 裡只能呼叫一次 show()：每次 loop() 畫一格就好，有先後順序的動畫用 seconds() 算現在在哪一段。",
   8: "buzzer.beep() 的長度單位是秒：這支程式給了超過 10 秒（例如寫 200 會響 200 秒）。如果是把毫秒當成秒，請改成小數（200 毫秒＝0.2）。",
 };
-// 蜂鳴器的音太低：板子上那顆蜂鳴器 1000 Hz 以下很小聲，預覽的喇叭卻一樣大聲（聽不出差別）。低於這個頻率響超過這麼多格就提醒
-const BUZZ_QUIET_HZ = 1000, LOW_TONE_FRAMES = 12;
-const LOW_TONE_TEXT = "蜂鳴器有一段聲音低於 1000 Hz：板子上那顆蜂鳴器在這麼低的音很小聲（預覽的喇叭聽不出差別）。請把音移到第 7 個八度附近（NOTE_C7～NOTE_G7 最大聲）。";
 // 程式的 PANEL 跟目前選的燈板不同：預覽照程式顯示，但燒到選的那片燈板上會不對
 function panelWarnText(p) {
   return !p || p === size ? "" :
@@ -437,7 +434,6 @@ function renderWarn() {
   if (state.browserWarn) lines.push(state.browserWarn);   // 雲端版：這個瀏覽器不能燒錄（開頁時檢查）
   if (state.panelWarn) lines.push(state.panelWarn);
   for (const bit of [1, 2, 4, 8]) if (state.warn & bit) lines.push(WARN_TEXT[bit]);
-  if (state.lowTone >= LOW_TONE_FRAMES) lines.push(LOW_TONE_TEXT);
   warnEl.textContent = lines.map((l) => "⚠ " + l).join("\n");
   warnEl.hidden = !lines.length;
 }
@@ -755,7 +751,6 @@ function frame(now) {
   // 除錯模式接著板子（看的、聽的都是板子；預覽在背景跑，不能跟板子一起響）
   const hz = state.mod._bp_buzzer_hz();
   buzzerSet(state.failed || (dbg.on && dbg.port) ? 0 : hz);
-  if (hz > 0 && hz < BUZZ_QUIET_HZ && ++state.lowTone === LOW_TONE_FRAMES) renderWarn();   // 音太低：板子上會很小聲
   state.ticks++;
   if (state.ticks === 10 || state.ticks % 60 === 0) {   // 跑幾格後看有沒有「預覽正常、板子會出問題」的寫法
     const w = state.mod._bp_warn();
@@ -845,7 +840,7 @@ async function run() {
     state.interval = 1000 / state.target;
     state.t0 = performance.now();
     state.last = -Infinity;
-    state.ticks = 0; state.warn = 0; state.lowTone = 0;
+    state.ticks = 0; state.warn = 0;
     state.panelWarn = panelWarnText(state.n);
     renderWarn();
     stripAttach(mod);                        // 這份程式有沒有燈條（#define STRIP）

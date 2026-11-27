@@ -23,7 +23,7 @@ const pngSize = (buf) => (buf.length > 24 ? [buf.readUInt32BE(16), buf.readUInt3
   say(official8.every((e) => e.id.startsWith("8x8/") && e.desc && e.thumb === "/thumb?id=" + encodeURIComponent(e.id)),
       "每個範例都有 id、說明、縮圖網址");
   const list16 = await (await get("/examples?size=16")).json();
-  say(JSON.stringify(list16.filter((e) => e.category !== "我的範例").map((e) => e.title)) === JSON.stringify(["彩虹流動", "小綠人", "中文跑馬燈", "生命遊戲", "沙漏番茄鐘", "FFT頻譜", "煎荷包蛋"]),
+  say(JSON.stringify(list16.filter((e) => e.category !== "我的範例").map((e) => e.title)) === JSON.stringify(["彩虹流動", "小綠人", "中文跑馬燈", "生命遊戲", "沙漏番茄鐘", "FFT頻譜", "煎荷包蛋", "聖誕花圈", "聖誕煙囪"]),
       "16×16：" + list16.map((e) => e.title).join("、"));
   say((await get("/examples?size=12")).status === 400, "size 不是 8／16：400");
 

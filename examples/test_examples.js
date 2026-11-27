@@ -12,7 +12,9 @@
 // 有 DURATION 的範例（番茄鐘）另外檢查：按按鈕 1 → 清空、0.5 秒注到九分滿、20 秒漏完、最後只留一顆水滴。
 // 用到 audio.band() 的範例（頻譜類）另外注入 70Hz 正弦波（8 段、16 段的最低一段都包含 70Hz）：
 //   最低頻那一欄要長到接近滿格、最高頻那一欄幾乎不亮；停掉聲音半秒後要回到沒有麥克風時的畫面。
-// 用到 tilt 的範例（重力類）另外用 bp_tilt_set 指定「右邊往下」：畫面的亮度重心要偏右。
+// 用到 tilt.x()／tilt.y() 的範例（重力類）另外用 bp_tilt_set 指定「右邊往下」：畫面的亮度重心要偏右。
+//   只用 tilt.ready() 的不算（聖誕花圈、聖誕煙囪拿 IMU 偵測開門，畫面不跟著重力走）。
+// 旋鈕：程式沒有讀旋鈕（knob.value()）的範例不驗「旋鈕有作用」，會印一行說明（2026-11-27 巴特的聖誕作品直接放進官方範例，不用旋鈕）。
 const fs = require("fs"), path = require("path");
 const { writePng } = require("./png.js");
 const { listExamples } = require("../station/catalog.js");
@@ -141,7 +143,7 @@ function montage(rows) {                           // rows[r] = { n, shots: [N*N
       console.log("    （註：拼圖最後一格是注入 70Hz 時的畫面，前面是沒有麥克風的畫面）");
     }
 
-    if (/\btilt\./.test(code)) {                   // 重力類：右邊往下 60°，最後半秒的平均重心要偏右
+    if (/\btilt\.[xy]\s*\(/.test(code)) {         // 重力類：右邊往下 60°，最後半秒的平均重心要偏右
       const tm = await loadModule(pv.js), tp = tm._bp_framebuffer();
       tm._bp_tilt_set(0.866, 0.5);
       let cx = 0;
@@ -188,8 +190,10 @@ function montage(rows) {                           // rows[r] = { n, shots: [N*N
         }
         return null;
       };
+      const usesKnob = /\bknob\.value\s*\(/.test(code);
+      if (!usesKnob) console.log("    －   這個範例沒有讀旋鈕（knob.value()），不驗「旋鈕有作用」");
       for (const [knob, press, msg] of [[0.5, 1, "按鈕 1 有作用（按下後畫面跟沒按不一樣）"], [0.5, 2, "按鈕 2 有作用"],
-                                        [0, 0, "旋鈕有作用（轉到最左跟中間的畫面不一樣）"]]) {
+                                        ...(usesKnob ? [[0, 0, "旋鈕有作用（轉到最左跟中間的畫面不一樣）"]] : [])]) {
         const r = await works(knob, press);
         say(r !== null, msg + (r || ""));
       }

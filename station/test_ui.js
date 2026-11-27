@@ -324,7 +324,7 @@ const OKBODY = "void setup() {\n  begin();\n}\n\nvoid loop() {\n  dot(0, 0, RED)
     await setCodeAndRun(TONE(2000));
     await frames(6);
     say((await buzzNow()).out === 2000, "改回編得過的程式：又響了");
-    // 提醒（預覽聽起來正常、板子上會出問題）：把毫秒當成秒、音太低
+    // 提醒（預覽聽起來正常、板子上會出問題）：把毫秒當成秒。音太低（1000 Hz 以下）不提醒（2026-11-27 巴特：不需要）
     await frames(70);
     say(!(await visible("#warn")), "響 2000 Hz：沒有提醒");
     await setCodeAndRun(prog(8, "void setup() {\n  begin();\n}\n\nvoid loop() {\n  if (button1.clicked()) buzzer.beep(NOTE_C7, 200);\n  clear();\n  dot(0, 0, RED);\n  show();\n}\n"));
@@ -332,12 +332,9 @@ const OKBODY = "void setup() {\n  begin();\n}\n\nvoid loop() {\n  dot(0, 0, RED)
     await page.waitForFunction(() => !document.getElementById("warn").hidden, { timeout: 5000 }).catch(() => {});
     say(/單位是秒/.test(await text("#warn")), "buzzer.beep(頻率, 200)：提醒長度的單位是秒（" + (await text("#warn")).slice(0, 34) + "…）");
     await setCodeAndRun(TONE(262));
-    await page.waitForFunction(() => /很小聲/.test(document.getElementById("warn").textContent), { timeout: 5000 }).catch(() => {});
-    say(/1000 Hz.*很小聲/.test(await text("#warn")) && !/單位是秒/.test(await text("#warn")),
-        "一直響 262 Hz：提醒板子上的蜂鳴器 1000 Hz 以下很小聲（上一支程式的提醒不會留著）");
-    await setCodeAndRun(TONE(2000));
     await frames(70);
-    say(!(await visible("#warn")), "換回 2000 Hz：提醒消失");
+    say((await buzzNow()).out === 262 && !(await visible("#warn")),
+        "一直響 262 Hz：照常響，不跳「音太低」的提醒；上一支程式的提醒也不會留著（" + (await text("#warn")).slice(0, 30) + "）");
     await setCodeAndRun(prog(8, "void setup() {\n  begin();\n}\n\nvoid loop() {\n  buzzer.tone(1000);\n  if (seconds() > 0.5f) { while (millis() < 99999999) {} }\n  show();\n}\n"));
     await waitStatus(/預覽停止/, 8000).catch(() => {});
     await frames(4);
